@@ -5,6 +5,13 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if version unchanged'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: write
@@ -89,17 +96,30 @@ jobs:
         $currentVersion = "${{ steps.version.outputs.VERSION }}"
         $previousVersion = "${{ steps.previous_version.outputs.PREVIOUS_VERSION }}"
 
+        $isManualTrigger = "${{ github.event_name }}" -eq "workflow_dispatch"
+        $forceBuild = "${{ github.event.inputs.force_build }}" -eq "true"
+
         if ([string]::IsNullOrEmpty($previousVersion)) {
-          echo "No previous version found - skipping build (no version change to compare)"
-          echo "SHOULD_BUILD=false" >> $env:GITHUB_OUTPUT
-          echo "::notice::Skipping build - no previous version to compare against. To force a build, bump the version number."
-          exit 0
+          if ($isManualTrigger -or $forceBuild) {
+            echo "No previous version found - proceeding with build (manual trigger or force build)"
+            echo "SHOULD_BUILD=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "No previous version found - skipping build (no version change to compare)"
+            echo "SHOULD_BUILD=false" >> $env:GITHUB_OUTPUT
+            echo "::notice::Skipping build - no previous version to compare against. To force a build, bump the version number or trigger manually."
+            exit 0
+          }
         }
 
         if ($currentVersion -eq $previousVersion) {
-          echo "Version unchanged ($currentVersion), skipping build"
-          echo "SHOULD_BUILD=false" >> $env:GITHUB_OUTPUT
-          echo "::notice::Skipping build - no version change detected (current: $currentVersion, previous: $previousVersion)"
+          if ($isManualTrigger -or $forceBuild) {
+            echo "Version unchanged ($currentVersion), but proceeding with build (manual trigger or force build)"
+            echo "SHOULD_BUILD=true" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "Version unchanged ($currentVersion), skipping build"
+            echo "SHOULD_BUILD=false" >> $env:GITHUB_OUTPUT
+            echo "::notice::Skipping build - no version change detected (current: $currentVersion, previous: $previousVersion)"
+          }
         } else {
           echo "Version changed from $previousVersion to $currentVersion, proceeding with build"
           echo "SHOULD_BUILD=true" >> $env:GITHUB_OUTPUT
