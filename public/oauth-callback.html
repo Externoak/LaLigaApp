@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>La Liga OAuth Callback</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 3rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 400px;
+        }
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .success {
+            background: rgba(16, 185, 129, 0.2);
+            border: 2px solid #10b981;
+        }
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 2px solid #ef4444;
+        }
+        .status {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="container">
+        <div class="spinner" id="spinner"></div>
+        <h2 id="title">🔐 Procesando OAuth</h2>
+        <p id="message">Capturando tokens de La Liga...</p>
+        <div class="status" id="status">Iniciando proceso...</div>
+    </div>
+
+    <script>
+        console.log('🚀 La Liga OAuth Callback Handler loaded');
+        console.log('📍 Current URL:', window.location.href);
+        
+        const container = document.getElementById('container');
+        const spinner = document.getElementById('spinner');
+        const title = document.getElementById('title');
+        const message = document.getElementById('message');
+        const status = document.getElementById('status');
+        
+        function updateStatus(statusText, isError = false, isSuccess = false) {
+            status.textContent = statusText;
+            console.log(`📝 Status: ${statusText}`);
+            
+            if (isError) {
+                container.classList.add('error');
+                title.textContent = '❌ Error OAuth';
+                spinner.style.display = 'none';
+            } else if (isSuccess) {
+                container.classList.add('success');
+                title.textContent = '✅ OAuth Exitoso';
+                spinner.style.display = 'none';
+            }
+        }
+        
+        // Main token processing function
+        function processOAuthCallback() {
+            console.log('🔍 Starting OAuth callback processing...');
+            updateStatus('Analizando respuesta OAuth...');
+            
+            const url = window.location.href;
+            const urlParams = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            
+            console.log('🔗 Search params:', window.location.search);
+            console.log('🔗 Hash params:', window.location.hash);
+            
+            const tokenData = {};
+            
+            // Extract tokens from hash (fragment mode)
+            ['access_token', 'id_token', 'refresh_token', 'token_type', 'expires_in', 'scope', 'state'].forEach(param => {
+                const value = hashParams.get(param) || urlParams.get(param);
+                if (value) {
+                    tokenData[param] = value;
+                    console.log(`✅ Found ${param}:`, value.substring(0, 30) + '...');
+                }
+            });
+            
+            // Check for errors
+            const error = hashParams.get('error') || urlParams.get('error');
+            const errorDescription = hashParams.get('error_description') || urlParams.get('error_description');
+            
+            if (error) {
+                console.error('❌ OAuth Error:', error, errorDescription);
+                updateStatus(`Error: ${error} - ${errorDescription}`, true);
+                
+                if (window.opener) {
+                    window.opener.postMessage({ 
+                        type: 'OAUTH_ERROR', 
+                        error: error, 
+                        error_description: errorDescription 
+                    }, '*');
+                }
+                
+                setTimeout(() => {
+                    if (window.opener) {
+                        window.close();
+                    } else {
+                        window.location.href = '/';
+                    }
+                }, 3000);
+                return;
+            }
+            
+            // Check if we have valid tokens
+            if (tokenData.access_token || tokenData.id_token) {
+                console.log('🎉 SUCCESS: Valid tokens captured!');
+                console.log('📋 Token data:', {
+                    access_token: tokenData.access_token ? 'Present (' + tokenData.access_token.length + ' chars)' : 'Missing',
+                    id_token: tokenData.id_token ? 'Present (' + tokenData.id_token.length + ' chars)' : 'Missing',
+                    refresh_token: tokenData.refresh_token ? 'Present' : 'Missing',
+                    expires_in: tokenData.expires_in || 'Not specified'
+                });
+                
+                updateStatus('¡Tokens capturados exitosamente!', false, true);
+                message.textContent = '🎉 Login exitoso - Cerrando ventana...';
+                
+                // Send to parent window
+                if (window.opener) {
+                    console.log('📨 Sending tokens to parent window...');
+                    try {
+                        window.opener.postMessage({
+                            type: 'LALIGA_TOKENS_CAPTURED',
+                            tokens: tokenData
+                        }, '*');
+                        
+                        setTimeout(() => {
+                            console.log('🚪 Closing callback window...');
+                            window.close();
+                        }, 1500);
+                    } catch (e) {
+                        console.error('❌ Error sending tokens to parent:', e);
+                        updateStatus('Error enviando tokens a ventana principal', true);
+                    }
+                } else {
+                    // Fallback: redirect to main app with tokens in localStorage
+                    console.log('💾 No parent window, storing in localStorage...');
+                    localStorage.setItem('oauth-callback-tokens', JSON.stringify({
+                        tokens: tokenData,
+                        timestamp: Date.now()
+                    }));
+                    
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 2000);
+                }
+            } else {
+                console.log('⚠️ No tokens found in callback');
+                updateStatus('No se encontraron tokens en la respuesta', true);
+                message.textContent = 'No se pudieron extraer los tokens';
+                
+                setTimeout(() => {
+                    if (window.opener) {
+                        window.close();
+                    } else {
+                        window.location.href = '/';
+                    }
+                }, 3000);
+            }
+        }
+        
+        // Start processing immediately
+        processOAuthCallback();
+        
+        // Also check for POST data or delayed loading
+        setTimeout(() => {
+            console.log('🔄 Retry processing after 500ms...');
+            processOAuthCallback();
+        }, 500);
+        
+        // Final attempt
+        setTimeout(() => {
+            console.log('🔄 Final processing attempt after 2s...');
+            processOAuthCallback();
+        }, 2000);
+        
+        // Handle page load events
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('📄 DOM Content Loaded');
+            processOAuthCallback();
+        });
+        
+        window.addEventListener('load', () => {
+            console.log('🏁 Window fully loaded');
+            processOAuthCallback();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Get version from package.json
+      id: version
+      shell: powershell
+      run: |
+        $packageJson = Get-Content package.json | ConvertFrom-Json
+        $version = $packageJson.version
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+
+    - name: Get previous version from latest release
+      id: previous_version
+      shell: powershell
+      run: |
+        try {
+          # Get the latest release using GitHub API
+          $headers = @{
+            'Accept' = 'application/vnd.github+json'
+            'Authorization' = 'Bearer ${{ secrets.GITHUB_TOKEN }}'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+
+          $uri = "https://api.github.com/repos/${{ github.repository }}/releases/latest"
+          echo "Fetching latest release from: $uri"
+
+          $response = Invoke-RestMethod -Uri $uri -Headers $headers -ErrorAction SilentlyContinue
+
+          if ($response -and $response.tag_name) {
+            $latestTag = $response.tag_name
+            echo "Found latest release tag: $latestTag"
+
+            # Extract version from tag (assuming format like v3.1.1-123)
+            if ($latestTag -match "v([\d\.]+)") {
+              $previousVersion = $matches[1]
+              echo "PREVIOUS_VERSION=$previousVersion" >> $env:GITHUB_OUTPUT
+              echo "Latest release version: $previousVersion"
+            } else {
+              echo "Could not parse version from tag: $latestTag"
+              echo "PREVIOUS_VERSION=" >> $env:GITHUB_OUTPUT
+            }
+          } else {
+            echo "No previous releases found via GitHub API"
+            # Fallback: try to get version from previous commit
+            $commitCount = git rev-list --count HEAD 2>$null
+            if ($LASTEXITCODE -ne 0 -or $commitCount -eq $null -or [int]$commitCount -lt 2) {
+              echo "No previous releases found, treating as first release"
+              echo "PREVIOUS_VERSION=" >> $env:GITHUB_OUTPUT
+            } else {
+              $previousPackageJson = git show HEAD~1:package.json 2>$null
+              if ($LASTEXITCODE -eq 0 -and $previousPackageJson) {
+                $previousJson = $previousPackageJson | ConvertFrom-Json
+                $previousVersion = $previousJson.version
+                echo "PREVIOUS_VERSION=$previousVersion" >> $env:GITHUB_OUTPUT
+                echo "Previous commit version: $previousVersion"
+              } else {
+                echo "No previous version found, treating as first release"
+                echo "PREVIOUS_VERSION=" >> $env:GITHUB_OUTPUT
+              }
+            }
+          }
+        } catch {
+          echo "Error getting previous version: $_"
+          echo "Treating as first release due to error"
+          echo "PREVIOUS_VERSION=" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Compare versions
+      id: compare
+      shell: powershell
+      run: |
+        $currentVersion = "${{ steps.version.outputs.VERSION }}"
+        $previousVersion = "${{ steps.previous_version.outputs.PREVIOUS_VERSION }}"
+
+        if ([string]::IsNullOrEmpty($previousVersion)) {
+          echo "No previous version found - skipping build (no version change to compare)"
+          echo "SHOULD_BUILD=false" >> $env:GITHUB_OUTPUT
+          echo "::notice::Skipping build - no previous version to compare against. To force a build, bump the version number."
+          exit 0
+        }
+
+        if ($currentVersion -eq $previousVersion) {
+          echo "Version unchanged ($currentVersion), skipping build"
+          echo "SHOULD_BUILD=false" >> $env:GITHUB_OUTPUT
+          echo "::notice::Skipping build - no version change detected (current: $currentVersion, previous: $previousVersion)"
+        } else {
+          echo "Version changed from $previousVersion to $currentVersion, proceeding with build"
+          echo "SHOULD_BUILD=true" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Skip build notification
+      if: steps.compare.outputs.SHOULD_BUILD == 'false'
+      run: |
+        echo "✅ Workflow completed successfully - no version change detected"
+        echo "::notice::Build skipped - no version change detected. To trigger a build, update the version in package.json"
+
+    - name: Setup Node.js
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      run: npm ci
+
+    - name: Update version.json with correct version and timestamp
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      shell: powershell
+      run: |
+        $version = "${{ steps.version.outputs.VERSION }}"
+        $timestamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+        if (Test-Path "version.json") {
+          $versionJson = Get-Content "version.json" -Encoding UTF8 | ConvertFrom-Json
+          $versionJson.version = $version
+          $versionJson.publishedAt = $timestamp
+          $jsonContent = $versionJson | ConvertTo-Json -Depth 10
+          [System.IO.File]::WriteAllText("version.json", $jsonContent, [System.Text.Encoding]::UTF8)
+          echo "Updated version.json with version: $version and publishedAt: $timestamp"
+          Get-Content version.json -Encoding UTF8
+        } else {
+          echo "version.json not found, skipping update"
+        }
+
+    - name: Update README files with correct version
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      shell: powershell
+      run: |
+        $version = "${{ steps.version.outputs.VERSION }}"
+
+        # Update Spanish README.md
+        if (Test-Path "README.md") {
+          $readmeContent = Get-Content "README.md" -Raw -Encoding UTF8
+          $readmeContent = $readmeContent -replace 'version-[\d\.]+-', "version-$version-"
+          [System.IO.File]::WriteAllText("README.md", $readmeContent, [System.Text.Encoding]::UTF8)
+          echo "Updated README.md with version: $version"
+        }
+
+        # Update English README_EN.md
+        if (Test-Path "README_EN.md") {
+          $readmeEnContent = Get-Content "README_EN.md" -Raw -Encoding UTF8
+          $readmeEnContent = $readmeEnContent -replace 'version-[\d\.]+-', "version-$version-"
+          [System.IO.File]::WriteAllText("README_EN.md", $readmeEnContent, [System.Text.Encoding]::UTF8)
+          echo "Updated README_EN.md with version: $version"
+        }
+
+    - name: Build Electron app
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      run: npm run electron:dist
+
+    - name: Create release zip
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      shell: powershell
+      run: |
+        $distPath = "dist"
+        $zipPath = "LaLigaApp.zip"
+
+        # Check if dist exists and find the app folder
+        if (Test-Path $distPath) {
+          echo "Dist directory found: $distPath"
+
+          # Look for win-unpacked folder inside LaLiga-Fantasy-App
+          $laligaFantasyAppPath = Join-Path $distPath "LaLiga-Fantasy-App"
+          $winUnpackedPath = Join-Path $laligaFantasyAppPath "win-unpacked"
+
+          if (Test-Path $winUnpackedPath) {
+            echo "Found win-unpacked folder inside LaLiga-Fantasy-App"
+
+            # Rename win-unpacked to LaLigaApp by copying its contents
+            $targetLaligaAppPath = "LaLigaApp"
+            if (Test-Path $targetLaligaAppPath) {
+              Remove-Item $targetLaligaAppPath -Recurse -Force
+            }
+
+            # Copy the entire win-unpacked folder and rename it
+            Copy-Item $winUnpackedPath $targetLaligaAppPath -Recurse -Force
+            echo "Copied and renamed win-unpacked to LaLigaApp"
+
+            # Create zip containing ONLY the LaLigaApp folder
+            Compress-Archive -Path $targetLaligaAppPath -DestinationPath $zipPath -Force
+            echo "Created zip: $zipPath ($((Get-Item $zipPath).Length / 1MB) MB)"
+          } else {
+            echo "win-unpacked folder not found at: $winUnpackedPath"
+            if (Test-Path $laligaFantasyAppPath) {
+              echo "Contents of LaLiga-Fantasy-App folder:"
+              Get-ChildItem -Path $laligaFantasyAppPath | ForEach-Object { $_.Name }
+            }
+            exit 1
+          }
+        } else {
+          echo "Dist directory not found: $distPath"
+          exit 1
+        }
+
+    - name: Create Release
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.version.outputs.VERSION }}-${{ github.run_number }}
+        name: LaLiga Fantasy App v${{ steps.version.outputs.VERSION }}
+        body: |
+          🚀 **LaLiga Fantasy App v${{ steps.version.outputs.VERSION }}**
+
+          ## 📥 Installation
+          1. Download `LaLigaApp.zip`
+          2. Extract the ZIP file
+          3. Run the `.exe` file
+
+          ## 🔄 Changes
+          - Automated build from commit ${{ github.sha }}
+          - Built on ${{ github.event.head_commit.timestamp }}
+
+          ## ⚖️ Legal Notice
+          This is an unofficial application that uses NON-public APIs.
+          It is not affiliated with LaLiga Fantasy or futbolfantasy.com.
+          ⚠️ Use at your own risk.
+        files: LaLigaApp.zip
+        draft: false
+        prerelease: false
+
+    - name: Commit updated files
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add version.json README.md README_EN.md
+        git diff --staged --quiet || git commit -m "Update version files to ${{ steps.version.outputs.VERSION }} [skip ci]"
+        git push
