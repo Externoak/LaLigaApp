@@ -27,7 +27,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
 
   const fetchPlayerDetails = useCallback(async () => {
     if (!player) return;
-    
+
     setLoading(true);
     setError(null);
 
@@ -56,20 +56,47 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
 
   const fetchNextOpponent = useCallback(async () => {
     try {
-      // Get the player's team name
-      const teamName = playerData?.playerMaster?.team?.name ||
-                      player.matchedPlayer?.team?.name ||
-                      player.team?.name;
+      setNextOpponent(null);
 
-      if (!teamName) return;
+      const teamNames = [
+        playerData?.playerMaster?.team?.name,
+        playerData?.playerMaster?.team?.shortName,
+        playerData?.playerMaster?.team?.teamName,
+        player.matchedPlayer?.team?.name,
+        player.matchedPlayer?.team?.shortName,
+        player.team?.name,
+        player.team?.shortName
+      ].filter(Boolean);
 
-      // Get all matchdays to find the next one
+      if (teamNames.length === 0) {
+        return;
+      }
+
+      const normalizeString = (str) => {
+        return str?.toString().trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      };
+
+      const normalizedTeamNames = new Set(teamNames.map(normalizeString).filter(Boolean));
+      const matchesTeam = (name) => {
+        if (!name) return false;
+        if (teamNames.includes(name)) return true;
+        const normalized = normalizeString(name);
+        if (!normalized) return false;
+        return normalizedTeamNames.has(normalized);
+      };
+
+      const getMatchTime = (match) => {
+        const dateValue = match.matchDate || match.date || match.kickoff;
+        if (!dateValue) return Infinity;
+        const parsed = new Date(dateValue);
+        return Number.isNaN(parsed.getTime()) ? Infinity : parsed.getTime();
+      };
+
       const weekNumber = currentWeek?.data?.weekNumber || currentWeek?.weekNumber || 1;
       let nextWeek = weekNumber;
       let matchData = null;
 
-      // Try a few weeks ahead to find the next match
-      for (let week = nextWeek; week <= Math.min(nextWeek + 3, 38); week++) {
+      for (let week = nextWeek; week <= Math.min(nextWeek + 5, 38); week++) {
         try {
           const response = await fantasyAPI.getMatchday(week);
           let matches = [];
@@ -82,37 +109,54 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
             matches = response.elements;
           }
 
-          // Find match involving this team
-          const teamMatch = matches.find(match => {
-            const homeName = match.homeTeam?.name || match.local?.name;
-            const awayName = match.awayTeam?.name || match.visitor?.name;
+          const teamMatches = matches
+            .filter(match => {
+              const homeName = match.homeTeam?.name || match.local?.name;
+              const awayName = match.awayTeam?.name || match.visitor?.name;
+              return matchesTeam(homeName) || matchesTeam(awayName);
+            })
+            .sort((a, b) => getMatchTime(a) - getMatchTime(b));
 
-            return homeName === teamName || awayName === teamName;
+          const upcomingMatch = teamMatches.find(match => {
+            const state = typeof match.matchState === 'number' ? match.matchState : undefined;
+            const isFinishedState = typeof state === 'number' && state >= 7;
+            if (isFinishedState) {
+              return false;
+            }
+
+            const matchTime = getMatchTime(match);
+            if (matchTime === Infinity) {
+              return true;
+            }
+
+            const bufferMs = 2 * 60 * 60 * 1000;
+            return matchTime >= Date.now() - bufferMs;
           });
 
-          if (teamMatch) {
-            const isHome = (teamMatch.homeTeam?.name || teamMatch.local?.name) === teamName;
-            const opponent = isHome ?
-              (teamMatch.awayTeam?.name || teamMatch.visitor?.name) :
-              (teamMatch.homeTeam?.name || teamMatch.local?.name);
+          if (upcomingMatch) {
+            const homeName = upcomingMatch.homeTeam?.name || upcomingMatch.local?.name;
+            const awayName = upcomingMatch.awayTeam?.name || upcomingMatch.visitor?.name;
+            const isHome = matchesTeam(homeName);
+            const opponent = isHome ? awayName : homeName;
 
             matchData = {
               opponent,
               isHome,
               week,
-              date: teamMatch.matchDate || teamMatch.date
+              date: upcomingMatch.matchDate || upcomingMatch.date
             };
             break;
           }
         } catch (error) {
-                  }
+          continue;
+        }
       }
 
       setNextOpponent(matchData);
     } catch (error) {
+      setNextOpponent(null);
     }
   }, [playerData, player, currentWeek]);
-
   // Utility function to safely convert values to numbers
   const safeNumber = (value) => {
     if (typeof value === 'number') return value;
@@ -254,7 +298,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
                                player.team?.name}</span>
                         {nextOpponent && (
                           <div className="flex items-center gap-1 text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full">
-                            <span>vs</span>
+                            <span>J{nextOpponent.week} vs</span>
                             <span className="font-semibold">{nextOpponent.opponent}</span>
                             <span className="text-xs opacity-75">
                               ({nextOpponent.isHome ? 'Casa' : 'Fuera'})
@@ -564,7 +608,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
                                   className={`cursor-pointer group transition-all duration-200 flex-shrink-0 ${
                                     isSelected ? 'transform scale-105' : 'hover:transform hover:scale-102'
                                   }`}
-                                  style={{ minWidth: '60px' }} // Fixed minimum width for consistent bars
+                                  style={{ minWidth: '60px' }}
                                 >
                                   <div className="flex flex-col items-center">
                                     {/* Bar */}
@@ -802,4 +846,5 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
 };
 
 export default PlayerDetailModal;
+
 

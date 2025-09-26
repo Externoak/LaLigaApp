@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Trophy, ShoppingCart, Users, Calendar, Search, Bell, X, Moon, Sun,
-  Activity, LogOut, Shield, User, Target, RefreshCw, Clock
+  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { fantasyAPI } from '../../services/api';
@@ -536,6 +536,16 @@ const Layout = ({ children }) => {
               </button>
 
               <UpdateChecker />
+
+              <a
+                href="https://github.com/Externoak/LaLigaApp/issues"
+                target="_blank"
+                rel="noreferrer"
+                className="hidden sm:inline-flex items-center justify-center p-2 rounded-lg text-primary-600 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-500/10 transition-colors"
+                title="Reportar un problema"
+              >
+                <Bug className="w-5 h-5" />
+              </a>
 
               <button
                 onClick={toggleDarkMode}

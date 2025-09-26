@@ -105,7 +105,7 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
   );
 };
 
-const FootballPitch = ({ lineupData, loading = false, nextOpponent, onPlayerClick }) => {
+const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], onPlayerClick }) => {
   if (loading) {
     return (
       <div className="bg-gradient-to-b from-green-400 to-green-600 rounded-lg p-8 min-h-[600px] flex items-center justify-center">
@@ -232,15 +232,18 @@ const FootballPitch = ({ lineupData, loading = false, nextOpponent, onPlayerClic
               <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
                 {lineupData.team.fullName}
               </h3>
-              <div className="flex items-center gap-4 mt-1">
+              <div className="flex flex-wrap items-center gap-3 mt-1">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
                   Formación: {actualFormation}
                 </span>
-                {nextOpponent && (
-                  <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full">
-                    Próximo: vs {nextOpponent.opponent} ({nextOpponent.isHome ? 'Casa' : 'Fuera'}) - J{nextOpponent.week}
+                {(upcomingOpponents || []).slice(0, 2).map((match, index) => (
+                  <span
+                    key={`next-${match.week}-${match.opponent}-${index}`}
+                    className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full"
+                  >
+                    J{match.week} - vs {match.opponent} ({match.isHome ? 'Casa' : 'Fuera'})
                   </span>
-                )}
+                ))}
               </div>
             </div>
           </div>

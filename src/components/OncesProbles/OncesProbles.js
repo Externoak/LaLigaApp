@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Clock, RefreshCw, Calendar, TrendingUp } from 'lucide-react';
+import { Clock, RefreshCw, Calendar } from 'lucide-react';
 import TeamSelector from './TeamSelector';
 import FootballPitch from './FootballPitch';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
@@ -13,7 +13,7 @@ const OncesProbles = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [, _setCacheStats] = useState(null);
-  const [nextOpponent, setNextOpponent] = useState(null);
+  const [upcomingOpponents, setUpcomingOpponents] = useState([]);
   const [currentWeek, setCurrentWeek] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,7 +28,7 @@ const OncesProbles = () => {
   const { data: playersData } = useQuery({
     queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 5 * 60 * 1000 // Cache for 5 minutes
   });
 
   const fetchCurrentWeek = useCallback(async () => {
@@ -39,11 +39,13 @@ const OncesProbles = () => {
     }
   }, []);
 
-  const fetchNextOpponent = useCallback(async (teamSlug) => {
+  const fetchUpcomingOpponents = useCallback(async (teamSlug) => {
     try {
+      setUpcomingOpponents([]);
       // Get team data from the teams array
       const team = teams.find(t => t.slug === teamSlug);
       if (!team) {
+        setUpcomingOpponents([]);
         return;
       }
 
@@ -71,15 +73,15 @@ const OncesProbles = () => {
 
       // Filter out any undefined/null values
       const validTeamNames = teamNames.filter(Boolean);
-
+      const normalizeString = (str) => str?.trim().normalize('NFKD').replace(/[̀-ͯ]/g, '');
 
       // Get current week number
       const weekNumber = currentWeek?.data?.weekNumber || currentWeek?.weekNumber || 1;
       let nextWeek = weekNumber;
-      let matchData = null;
+      const collectedMatches = [];
 
-      // Try a few weeks ahead to find the next match
-      for (let week = nextWeek; week <= Math.min(nextWeek + 3, 38); week++) {
+      // Try a few weeks ahead to find the next matches
+      for (let week = nextWeek; week <= Math.min(nextWeek + 5, 38) && collectedMatches.length < 2; week++) {
         try {
           const response = await fantasyAPI.getMatchday(week);
           let matches = [];
@@ -92,17 +94,10 @@ const OncesProbles = () => {
             matches = response.elements;
           }
 
-
-          // Find match involving this team
-          const teamMatch = matches.find(match => {
+          const teamMatches = matches.filter(match => {
             const homeName = match.homeTeam?.name || match.local?.name;
             const awayName = match.awayTeam?.name || match.visitor?.name;
 
-
-            // Normalize function to handle encoding issues
-            const normalizeString = (str) => str?.trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-
-            // Check with both exact and normalized matching
             const exactMatch = validTeamNames.some(name =>
               homeName === name || awayName === name
             );
@@ -112,36 +107,38 @@ const OncesProbles = () => {
               normalizeString(name) === normalizeString(awayName)
             );
 
-
             return exactMatch || normalizedMatch;
           });
 
-          if (teamMatch) {
+          teamMatches.forEach(teamMatch => {
+            if (collectedMatches.length >= 2) {
+              return;
+            }
+
             const homeName = teamMatch.homeTeam?.name || teamMatch.local?.name;
             const awayName = teamMatch.awayTeam?.name || teamMatch.visitor?.name;
 
-            const isHome = validTeamNames.some(name =>
-              homeName === name
-            );
+            if (collectedMatches.some(existing => existing.week === week)) {
+              return;
+            }
 
+            const isHome = validTeamNames.some(name => homeName === name);
             const opponent = isHome ? awayName : homeName;
 
-            matchData = {
+            collectedMatches.push({
               opponent,
               isHome,
               week,
               date: teamMatch.matchDate || teamMatch.date
-            };
-
-            break;
-          }
+            });
+          });
         } catch (error) {
         }
       }
 
-
-      setNextOpponent(matchData);
+      setUpcomingOpponents(collectedMatches);
     } catch (error) {
+      setUpcomingOpponents([]);
     }
   }, [teams, currentWeek]);
 
@@ -199,10 +196,10 @@ const OncesProbles = () => {
       const fetchKey = `${selectedTeam}-${currentWeek?.data?.weekNumber || currentWeek?.weekNumber}`;
       if (lastFetchedOpponentRef.current !== fetchKey) {
         lastFetchedOpponentRef.current = fetchKey;
-        fetchNextOpponent(selectedTeam);
+        fetchUpcomingOpponents(selectedTeam);
       }
     }
-  }, [selectedTeam, currentWeek, fetchNextOpponent]);
+  }, [selectedTeam, currentWeek, fetchUpcomingOpponents]);
 
   useEffect(() => {
     // Update cache stats periodically
@@ -217,14 +214,6 @@ const OncesProbles = () => {
   }, []);
 
   const handleRefresh = () => {
-    if (selectedTeam) {
-      loadTeamLineup(selectedTeam);
-    }
-  };
-
-  const handleClearCache = () => {
-    oncesProbabesService.clearLineupCache();
-    _setCacheStats(oncesProbabesService.getCacheStats());
     if (selectedTeam) {
       loadTeamLineup(selectedTeam);
     }
@@ -269,17 +258,8 @@ const OncesProbles = () => {
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>
-
-            <button
-              onClick={handleClearCache}
-              className="p-2 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-              title="Limpiar caché"
-            >
-              <TrendingUp className="w-5 h-5" />
-            </button>
           </div>
         </div>
-
 
 
       </div>
@@ -307,7 +287,7 @@ const OncesProbles = () => {
       <FootballPitch
         lineupData={lineupData}
         loading={loading}
-        nextOpponent={nextOpponent}
+        upcomingOpponents={upcomingOpponents}
         onPlayerClick={handlePlayerClick}
       />
 
