@@ -8,7 +8,7 @@
 
 > A comprehensive fantasy football management platform for La Liga Fantasy with extra market information and probable lineups from https://www.futbolfantasy.com/
 
-[![Version](https://img.shields.io/badge/version-3.2.0-green.svg)](https://github.com/Externoak/LaLigaApp)
+[![Version](https://img.shields.io/badge/version-3.2.1-green.svg)](https://github.com/Externoak/LaLigaApp)
 [![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 [![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#platforms)
