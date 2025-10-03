@@ -4,6 +4,7 @@
  */
 
 import { normalizePlayerName, normalizeTeamName } from '../utils/playerNameMatcher';
+import api from './api';
 
 class MarketTrendsService {
     constructor() {
@@ -287,60 +288,43 @@ class MarketTrendsService {
 
             const targetUrl = 'https://www.futbolfantasy.com/analytics/laliga-fantasy/mercado';
 
-            let response;
+            const fetchViaProxy = async () => {
+                const { data } = await api.get('/v4/scrape/market', {
+                    params: { url: targetUrl },
+                    timeout: 15000,
+                });
+                if (!data || !data.html) {
+                    throw new Error('Market scrape returned empty payload');
+                }
+                return data.html;
+            };
+
+            let htmlText;
 
             if (isElectron && !isDev) {
-                // Production Electron - use Electron's net module via IPC
-                // Using Electron IPC to fetch market data
-                const result = await window.electronAPI.apiRequest({
-                    url: targetUrl,
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
-                    }
-                });
+                try {
+                    const result = await window.electronAPI.apiRequest({
+                        url: targetUrl,
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                            'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
+                        }
+                    });
 
-                if (result.status !== 200) {
-                    throw new Error(`HTTP error! status: ${result.status}`);
+                    if (result.status !== 200 || !result.data) {
+                        throw new Error('HTTP error! status: ' + result.status);
+                    }
+
+                    htmlText = result.data;
+                } catch (electronError) {
+                    htmlText = await fetchViaProxy();
                 }
-
-                response = {
-                    ok: true,
-                    status: result.status,
-                    text: () => Promise.resolve(result.data)
-                };
-            } else if (!isElectron && !isDev) {
-                // Production Web - direct fetch (if CORS allows)
-                // Using direct fetch for market data
-                response = await fetch(targetUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
-                    }
-                });
             } else {
-                // Development mode - use proxy
-                // Using development proxy
-                const proxyUrl = `http://localhost:3005/futbolfantasy?url=${encodeURIComponent(targetUrl)}`;
-                response = await fetch(proxyUrl, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                        'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0'
-                    }
-                });
+                htmlText = await fetchViaProxy();
             }
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const htmlText = await response.text();
             // HTML response received, parsing player data
 
             // Rest of method unchanged...

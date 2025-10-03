@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Trophy, ShoppingCart, Users, Calendar, Search, Bell, X, Moon, Sun,
@@ -18,6 +18,7 @@ const Layout = ({ children }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [serverLinks, setServerLinks] = useState([]);
   const searchRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchTimeoutRef = useRef(null);
@@ -25,7 +26,7 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { leagueName, leagueId, logout, isAuthenticated, setLeague, user, fetchUserData } = useAuthStore();
-  
+
 
   // Helper function for position names
   const getPositionName = (positionId) => {
@@ -48,6 +49,22 @@ const Layout = ({ children }) => {
     }
     return `${value}€`;
   };
+
+    const displayServerLink = useMemo(() => {
+    if (!serverLinks.length) {
+      return null;
+    }
+    const prioritized = serverLinks.map((url) => url.replace(/\/$/, ''));
+    const lanLink = prioritized.find((url) => {
+      try {
+        const { hostname } = new URL(url);
+        return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && hostname !== '127.0.0.1';
+      } catch (error) {
+        return false;
+      }
+    });
+    return (lanLink || prioritized[0]) ?? null;
+  }, [serverLinks]);
 
   // Perform search
   const performSearch = useCallback(async (query) => {
@@ -188,6 +205,78 @@ const Layout = ({ children }) => {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+  }, []);
+
+  useEffect(() => {
+    let didCancel = false;
+
+    const normalizeLinks = (list) => {
+      const unique = [];
+      list.forEach((item) => {
+        if (!item) return;
+        const cleaned = item.replace(/\/$/, '');
+        if (!unique.includes(cleaned)) {
+          unique.push(cleaned);
+        }
+      });
+      return unique;
+    };
+
+    const prioritizeLinks = (list) => {
+      const score = (url) => {
+        try {
+          const { hostname } = new URL(url);
+          if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && hostname !== '127.0.0.1') {
+            return 0;
+          }
+          if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return 2;
+          }
+          return 1;
+        } catch (error) {
+          return 3;
+        }
+      };
+      return [...list].sort((a, b) => score(a) - score(b));
+    };
+
+    const fetchServerLinks = async () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      const api = window.electronAPI;
+      try {
+        if (api?.getServerAddresses) {
+          const info = await api.getServerAddresses();
+          if (didCancel) return;
+          const urls = Array.isArray(info?.urls) ? info.urls : [];
+          const normalized = prioritizeLinks(normalizeLinks(urls));
+          if (normalized.length) {
+            const lanPreferred = normalized.filter((url) => {
+              try {
+                const { hostname } = new URL(url);
+                return hostname !== 'localhost' && hostname !== '127.0.0.1';
+              } catch (error) {
+                return false;
+              }
+            });
+            setServerLinks(lanPreferred.length ? lanPreferred : normalized);
+            return;
+          }
+        }
+      } catch (error) {
+        // Ignore and fall back
+      }
+      if (!didCancel && typeof window !== 'undefined' && window.location?.origin) {
+        setServerLinks([window.location.origin.replace(/\/$/, '')]);
+      }
+    };
+
+    fetchServerLinks();
+
+    return () => {
+      didCancel = true;
+    };
   }, []);
 
   // Search functionality
@@ -445,6 +534,9 @@ const Layout = ({ children }) => {
               <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center space-y-0.5 leading-tight">
                 <p className="font-medium text-[11px]">v{updateService.getCurrentVersion()}</p>
                 <p>Made with ❤️ by <span className="font-medium">Externo</span></p>
+                {displayServerLink && (
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">LAN: <span className="font-medium text-primary-500">{displayServerLink}</span></p>
+                )}
                 <p>Github: <span className="font-medium">https://github.com/Externoak</span></p>
                 <p className="text-gray-300 dark:text-gray-600">App no oficial de LaLiga Fantasy</p>
                 <p className="text-gray-300 dark:text-gray-600">Stats de https://www.futbolfantasy.com/</p>
@@ -567,6 +659,3 @@ const Layout = ({ children }) => {
 };
 
 export default Layout;
-
-
-
