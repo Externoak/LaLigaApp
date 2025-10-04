@@ -7,9 +7,18 @@
     @apply border-gray-200;
   }
 
-  body {
+  html, body {
     @apply bg-gray-50 dark:bg-dark-bg text-gray-900 dark:text-dark-text;
     font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  #root {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
   }
 
   /* Scrollbar personalizada */
@@ -89,5 +98,25 @@
 
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Mobile-specific utilities */
+  .mobile-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+
+  /* Mobile table scroll */
+  .mobile-table-scroll {
+    @apply overflow-x-auto scrollbar-hide;
+  }
+
+  @media (max-width: 1023px) {
+    .mobile-table-scroll table {
+      @apply min-w-[600px];
+    }
   }
 }

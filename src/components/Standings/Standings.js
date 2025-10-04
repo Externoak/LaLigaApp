@@ -247,8 +247,8 @@ const Standings = () => {
         </button>
       </div>
 
-      {/* Standings Table */}
-      <div className="card overflow-hidden">
+      {/* Standings Table - Desktop */}
+      <div className="card overflow-hidden hidden md:block">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-800">
@@ -360,6 +360,107 @@ const Standings = () => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Standings Cards - Mobile */}
+      <div className="md:hidden space-y-3">
+        {sortedStandings.map((item, index) => {
+          const position = item.position || index + 1;
+          const isUser = isCurrentUser(item);
+
+          return (
+            <motion.div
+              key={item.id || item.team?.id || index}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.02 }}
+              onClick={() => handleRowClick(item)}
+              className={`card p-5 cursor-pointer transition-all hover:shadow-lg ${
+                isUser ? 'ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/20' : ''
+              }`}
+            >
+              <div className="flex flex-col gap-4">
+                {/* Header: Position + Manager Info */}
+                <div className="flex items-start gap-4">
+                  {/* Position Badge - Larger */}
+                  <div className="flex flex-col items-center justify-center min-w-[60px] pt-1">
+                    {getPositionBadge(position)}
+                    <div className={`text-3xl font-black ${
+                      position <= 3
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-gray-900 dark:text-white'
+                    }`}>
+                      {position}
+                    </div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase mt-0.5">
+                      Pos
+                    </div>
+                  </div>
+
+                  {/* Manager Info - Better spacing */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-12 h-12 bg-gradient-to-br from-primary-400 to-primary-500 rounded-full flex items-center justify-center flex-shrink-0 shadow-md">
+                        <span className="text-white text-lg font-bold">
+                          {getManagerName(item).charAt(0)}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className="font-bold text-base text-gray-900 dark:text-white truncate">
+                            {getManagerName(item)}
+                          </div>
+                          {isUser && (
+                            <span className="badge bg-primary-500 text-white text-xs px-2 py-0.5">
+                              Tú
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 truncate mt-0.5">
+                          {getTeamName(item)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stats - Improved spacing and size */}
+                <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="text-center">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                      Puntos
+                    </div>
+                    <div className="text-2xl font-black text-gray-900 dark:text-white">
+                      {formatNumber(getTeamPoints(item))}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                      Valor
+                    </div>
+                    <div className="text-base font-bold text-gray-900 dark:text-white">
+                      {formatCurrency(getTeamValue(item))}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                      24h
+                    </div>
+                    <div className={`text-base font-bold ${
+                      getTeamMarketIncrease(item) > 0
+                        ? 'text-green-600 dark:text-green-400'
+                        : getTeamMarketIncrease(item) < 0
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}>
+                      {formatMarketChange(getTeamMarketIncrease(item))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
       </div>
 
       {sortedStandings.length === 0 && (

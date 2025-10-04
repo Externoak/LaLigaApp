@@ -404,44 +404,45 @@ const Market = () => {
       </div>
 
       {/* Navigation Tabs - Always visible */}
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="flex space-x-8">
+      <div className="border-b border-gray-200 dark:border-gray-700 overflow-x-auto scrollbar-hide">
+        <nav className="flex space-x-2 sm:space-x-8 min-w-max sm:min-w-0">
           <Link
             to="/market"
-            className={`py-3 px-2 border-b-2 font-semibold text-lg transition-colors ${
+            className={`py-3 px-3 sm:px-2 border-b-2 font-semibold text-sm sm:text-lg transition-colors whitespace-nowrap ${
               location.pathname === '/market'
                 ? 'border-primary-500 text-primary-600 dark:text-primary-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <ShoppingCart className="w-5 h-5" />
-              En Venta
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">En Venta</span>
+              <span className="sm:hidden">Venta</span>
             </div>
           </Link>
           <Link
             to="/market/trends"
-            className={`py-3 px-2 border-b-2 font-semibold text-lg transition-colors ${
+            className={`py-3 px-3 sm:px-2 border-b-2 font-semibold text-sm sm:text-lg transition-colors whitespace-nowrap ${
               location.pathname === '/market/trends'
                 ? 'border-primary-500 text-primary-600 dark:text-primary-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <TrendingUp className="w-5 h-5" />
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
               Rentables
             </div>
           </Link>
           <Link
             to="/market/ofertas"
-            className={`py-3 px-2 border-b-2 font-semibold text-lg transition-colors ${
+            className={`py-3 px-3 sm:px-2 border-b-2 font-semibold text-sm sm:text-lg transition-colors whitespace-nowrap ${
               location.pathname === '/market/ofertas'
                 ? 'border-primary-500 text-primary-600 dark:text-primary-400'
                 : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <Coins className="w-5 h-5" />
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Coins className="w-4 h-4 sm:w-5 sm:h-5" />
               Ofertas
             </div>
           </Link>

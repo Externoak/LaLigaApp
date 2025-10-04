@@ -311,7 +311,6 @@ export const useAuthStore = create(
               }
             }
           } catch (apiError) {
-
             // Check if the error is due to invalid refresh token
             if (apiError.message && apiError.message.includes('invalid_grant')) {
               // Clear the invalid refresh token but keep the access token for this session
@@ -322,6 +321,8 @@ export const useAuthStore = create(
             }
 
             // Continue with JWT user data only
+            // The Layout component will automatically trigger a background refresh
+            // when it detects the user is not fully fetched
             localStorage.setItem('laliga_user', JSON.stringify(user));
           }
 
@@ -372,6 +373,13 @@ export const useAuthStore = create(
         } catch (error) {
           throw error;
         }
+      },
+
+      // Check if user data is fully fetched from API
+      isUserFullyFetched: () => {
+        const state = get();
+        // User is fully fetched if they have userId (which comes from API, not JWT)
+        return state.isAuthenticated && state.user?.userId;
       },
 
       // Get current bearer token

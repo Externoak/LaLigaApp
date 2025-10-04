@@ -159,7 +159,7 @@ const Matches = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-12 xl:grid-cols-12 gap-1">
+        <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 xl:grid-cols-12 gap-1 sm:gap-2">
           {Array.from({ length: 38 }, (_, index) => {
             const jornadaNumber = index + 1;
             const isSelected = currentWeekNumber === jornadaNumber;
@@ -169,7 +169,7 @@ const Matches = () => {
               <button
                 key={jornadaNumber}
                 onClick={() => setSelectedWeek(jornadaNumber)}
-                className={`group relative p-1.5 rounded-lg border transition-all duration-200 transform hover:scale-105 ${
+                className={`group relative p-1 sm:p-1.5 rounded-lg border transition-all duration-200 transform hover:scale-105 ${
                   isSelected
                     ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20 shadow-md'
                     : isCurrent
@@ -181,9 +181,9 @@ const Matches = () => {
                 {/* Compact Shield with Number */}
                 <div className="relative">
                   <Shield
-                    className={`w-8 h-8 mx-auto transition-colors duration-200 ${
-                      isSelected 
-                        ? 'text-primary-600 dark:text-primary-400' 
+                    className={`w-6 h-6 sm:w-8 sm:h-8 mx-auto transition-colors duration-200 ${
+                      isSelected
+                        ? 'text-primary-600 dark:text-primary-400'
                         : isCurrent
                         ? 'text-yellow-600 dark:text-yellow-400'
                         : 'text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300'
@@ -192,13 +192,13 @@ const Matches = () => {
 
                   {/* Number overlay */}
                   <div className={`absolute inset-0 flex items-center justify-center transition-colors duration-200 ${
-                    isSelected 
-                      ? 'text-primary-700 dark:text-primary-300' 
+                    isSelected
+                      ? 'text-primary-700 dark:text-primary-300'
                       : isCurrent
                       ? 'text-yellow-700 dark:text-yellow-300'
                       : 'text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100'
                   }`}>
-                    <span className="text-xs font-bold leading-none">
+                    <span className="text-[10px] sm:text-xs font-bold leading-none">
                       {jornadaNumber}
                     </span>
                   </div>
@@ -242,11 +242,87 @@ const Matches = () => {
             {isMatchPlayed && (
               <div className="absolute top-3 right-3 flex items-center gap-1 bg-primary-500/10 text-primary-600 dark:text-primary-400 px-2 py-1 rounded-full text-xs font-medium">
                 <Eye className="w-3 h-3" />
-                <span>Ver puntos</span>
+                <span className="hidden sm:inline">Ver puntos</span>
               </div>
             )}
 
-            <div className="p-6">
+            {/* Mobile Layout */}
+            <div className="md:hidden p-4">
+              <div className="space-y-4">
+                {/* Status Badge */}
+                <div className="flex items-center justify-between">
+                  <div className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(match)}`}>
+                    {match.localScore !== null && match.visitorScore !== null ? (
+                      <Trophy className="w-3 h-3" />
+                    ) : (
+                      <Clock className="w-3 h-3" />
+                    )}
+                    {getMatchStatus(match)}
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <Calendar className="w-3 h-3" />
+                    <span>{new Date(match.matchDate || match.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</span>
+                  </div>
+                </div>
+
+                {/* Teams - Vertical Stack */}
+                <div className="space-y-3">
+                  {/* Home Team */}
+                  <div className="flex items-center gap-3">
+                    {match.local?.badgeColor && (
+                      <img
+                        src={match.local.badgeColor}
+                        alt={match.local.name}
+                        className="w-10 h-10 object-contain flex-shrink-0"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">
+                        {match.local?.name || match.local?.mainName || match.local?.shortName || 'Equipo Local'}
+                      </h3>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Local</div>
+                    </div>
+                  </div>
+
+                  {/* Score */}
+                  <div className="text-center py-2">
+                    {match.localScore !== null && match.visitorScore !== null ? (
+                      <div className="text-3xl font-black text-gray-900 dark:text-white">
+                        {match.localScore} - {match.visitorScore}
+                      </div>
+                    ) : (
+                      <div className="text-2xl font-bold text-gray-500 dark:text-gray-400">VS</div>
+                    )}
+                  </div>
+
+                  {/* Away Team */}
+                  <div className="flex items-center gap-3">
+                    {match.visitor?.badgeColor && (
+                      <img
+                        src={match.visitor.badgeColor}
+                        alt={match.visitor.name}
+                        className="w-10 h-10 object-contain flex-shrink-0"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                        }}
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-bold text-gray-900 dark:text-white truncate">
+                        {match.visitor?.name || match.visitor?.mainName || match.visitor?.shortName || 'Equipo Visitante'}
+                      </h3>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">Visitante</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop Layout */}
+            <div className="hidden md:block p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 {/* Teams */}
                 <div className="flex-1">

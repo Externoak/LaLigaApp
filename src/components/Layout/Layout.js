@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Home, Trophy, ShoppingCart, Users, Calendar, Search, Bell, X, Moon, Sun,
-  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug
+  Home, Trophy, ShoppingCart, Users, Calendar, Search, X, Moon, Sun,
+  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug, FileText
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { fantasyAPI } from '../../services/api';
 import ApiStatus from '../Common/ApiStatus';
 import SearchResults from '../Common/SearchResults';
 import UpdateChecker from '../Common/UpdateChecker';
+import ChangelogModal from '../Common/ChangelogModal';
 import updateService from '../../services/updateService';
 import { sanitizeSearchTerm } from '../../utils/validation';
+import MobileNav from './MobileNav';
 
 const Layout = ({ children }) => {
   const [darkMode, setDarkMode] = useState(true);
@@ -18,14 +20,29 @@ const Layout = ({ children }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [serverLinks, setServerLinks] = useState([]);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [isElectron, setIsElectron] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const searchRef = useRef(null);
   const searchInputRef = useRef(null);
   const searchTimeoutRef = useRef(null);
 
   const location = useLocation();
   const navigate = useNavigate();
-  const { leagueName, leagueId, logout, isAuthenticated, setLeague, user, fetchUserData } = useAuthStore();
-  
+  const { leagueName, leagueId, logout, isAuthenticated, setLeague, user, fetchUserData, isUserFullyFetched } = useAuthStore();
+
+  // Auto-fetch user data if not fully loaded (for browser)
+  useEffect(() => {
+    if (isAuthenticated && !isUserFullyFetched()) {
+      // User is authenticated but doesn't have full data from API
+      // Trigger background refresh automatically
+      fetchUserData().catch(() => {
+        // Silent fail - user can manually refresh if needed
+      });
+    }
+  }, [isAuthenticated, isUserFullyFetched, fetchUserData]);
 
   // Helper function for position names
   const getPositionName = (positionId) => {
@@ -48,6 +65,22 @@ const Layout = ({ children }) => {
     }
     return `${value}€`;
   };
+
+    const displayServerLink = useMemo(() => {
+    if (!serverLinks.length) {
+      return null;
+    }
+    const prioritized = serverLinks.map((url) => url.replace(/\/$/, ''));
+    const lanLink = prioritized.find((url) => {
+      try {
+        const { hostname } = new URL(url);
+        return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && hostname !== '127.0.0.1';
+      } catch (error) {
+        return false;
+      }
+    });
+    return (lanLink || prioritized[0]) ?? null;
+  }, [serverLinks]);
 
   // Perform search
   const performSearch = useCallback(async (query) => {
@@ -188,6 +221,81 @@ const Layout = ({ children }) => {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+
+    // Detect Electron environment
+    setIsElectron(typeof window !== 'undefined' && !!window.electronAPI);
+  }, []);
+
+  useEffect(() => {
+    let didCancel = false;
+
+    const normalizeLinks = (list) => {
+      const unique = [];
+      list.forEach((item) => {
+        if (!item) return;
+        const cleaned = item.replace(/\/$/, '');
+        if (!unique.includes(cleaned)) {
+          unique.push(cleaned);
+        }
+      });
+      return unique;
+    };
+
+    const prioritizeLinks = (list) => {
+      const score = (url) => {
+        try {
+          const { hostname } = new URL(url);
+          if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && hostname !== '127.0.0.1') {
+            return 0;
+          }
+          if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return 2;
+          }
+          return 1;
+        } catch (error) {
+          return 3;
+        }
+      };
+      return [...list].sort((a, b) => score(a) - score(b));
+    };
+
+    const fetchServerLinks = async () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      const api = window.electronAPI;
+      try {
+        if (api?.getServerAddresses) {
+          const info = await api.getServerAddresses();
+          if (didCancel) return;
+          const urls = Array.isArray(info?.urls) ? info.urls : [];
+          const normalized = prioritizeLinks(normalizeLinks(urls));
+          if (normalized.length) {
+            const lanPreferred = normalized.filter((url) => {
+              try {
+                const { hostname } = new URL(url);
+                return hostname !== 'localhost' && hostname !== '127.0.0.1';
+              } catch (error) {
+                return false;
+              }
+            });
+            setServerLinks(lanPreferred.length ? lanPreferred : normalized);
+            return;
+          }
+        }
+      } catch (error) {
+        // Ignore and fall back
+      }
+      if (!didCancel && typeof window !== 'undefined' && window.location?.origin) {
+        setServerLinks([window.location.origin.replace(/\/$/, '')]);
+      }
+    };
+
+    fetchServerLinks();
+
+    return () => {
+      didCancel = true;
+    };
   }, []);
 
   // Search functionality
@@ -289,12 +397,21 @@ const Layout = ({ children }) => {
     navigate('/');
   };
 
+  // Determine if we should show desktop layout (>= 1024px or Electron)
+  const shouldShowDesktopLayout = isElectron;
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
+    <div className="min-h-screen bg-gray-50 dark:bg-dark-bg overflow-x-hidden">
       <ApiStatus />
 
-      {/* Sidebar */}
-      <aside className="fixed top-0 left-0 z-50 h-full w-64 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-dark-border">
+      {/* Sidebar - Hidden on mobile (<1024px) unless Electron */}
+      <aside className={`fixed top-0 left-0 z-50 h-full w-64 bg-white dark:bg-dark-card border-r border-gray-200 dark:border-dark-border transition-transform duration-300 ${
+        shouldShowDesktopLayout
+          ? ''
+          : isMobileMenuOpen
+            ? 'translate-x-0'
+            : '-translate-x-full lg:translate-x-0'
+      } ${!shouldShowDesktopLayout ? 'pb-20 lg:pb-0' : ''}`}>
 
         <div className="flex flex-col h-full">
           {/* Emblem */}
@@ -443,8 +560,20 @@ const Layout = ({ children }) => {
             {/* Version Info & Disclaimer */}
             <div className="mt-2 px-3 py-2 border-t border-gray-200 dark:border-gray-700">
               <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center space-y-0.5 leading-tight">
-                <p className="font-medium text-[11px]">v{updateService.getCurrentVersion()}</p>
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <p className="font-medium text-[11px]">v{updateService.getCurrentVersion()}</p>
+                  <button
+                    onClick={() => setIsChangelogOpen(true)}
+                    className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors group"
+                    title="Ver cambios"
+                  >
+                    <FileText className="w-3 h-3 text-gray-400 group-hover:text-primary-500 transition-colors" />
+                  </button>
+                </div>
                 <p>Made with ❤️ by <span className="font-medium">Externo</span></p>
+                {displayServerLink && (
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">Acceso Web: <span className="font-medium text-primary-500">{displayServerLink}</span></p>
+                )}
                 <p>Github: <span className="font-medium">https://github.com/Externoak</span></p>
                 <p className="text-gray-300 dark:text-gray-600">App no oficial de LaLiga Fantasy</p>
                 <p className="text-gray-300 dark:text-gray-600">Stats de https://www.futbolfantasy.com/</p>
@@ -454,15 +583,33 @@ const Layout = ({ children }) => {
         </div>
       </aside>
 
+      {/* Mobile menu backdrop */}
+      {isMobileMenuOpen && !shouldShowDesktopLayout && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Main Content */}
-      <div className="ml-64">
-        {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-white/80 dark:bg-dark-card/80 backdrop-blur-lg border-b border-gray-200 dark:border-dark-border">
+      <div className={`${shouldShowDesktopLayout ? 'ml-64' : 'ml-0 lg:ml-64'} ${!shouldShowDesktopLayout ? 'pb-16 lg:pb-0' : ''}`}>
+        {/* Top Bar - Fixed to viewport */}
+        <header className={`fixed top-0 right-0 z-30 bg-white/80 dark:bg-dark-card/80 backdrop-blur-lg border-b border-gray-200 dark:border-dark-border ${
+          shouldShowDesktopLayout ? 'left-64' : 'left-0 lg:left-64'
+        }`}>
           <div className="flex items-center justify-between px-4 lg:px-6 h-16">
 
-            {/* Enhanced Search Bar */}
-            <div className="flex-1 max-w-4xl mx-6" ref={searchRef}>
-              <div className="relative">
+            {/* Mobile search button - Only on small screens */}
+            <button
+              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+              className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <Search className="w-5 h-5" />
+            </button>
+
+            {/* Enhanced Search Bar - Hidden on small mobile, visible on larger screens */}
+            <div className="hidden sm:flex flex-1 max-w-4xl mx-2 md:mx-6" ref={searchRef}>
+              <div className="relative w-full overflow-hidden">
                 {/* Search Container with Enhanced Design */}
                 <div className={`relative flex items-center bg-white dark:bg-dark-card rounded-xl border-2 transition-all duration-200 shadow-sm hover:shadow-md ${
                   showSearchResults || searchQuery 
@@ -486,7 +633,7 @@ const Layout = ({ children }) => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(sanitizeSearchTerm(e.target.value))}
                     onFocus={() => searchQuery.trim().length >= 2 && setShowSearchResults(true)}
-                    className={`w-full bg-transparent border-0 outline-none py-3.5 pl-12 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 font-medium transition-all duration-200 ${
+                    className={`w-full bg-transparent border-0 outline-none py-3.5 pl-12 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 font-medium transition-all duration-200 truncate ${
                       showSearchResults || searchQuery ? 'text-primary-900 dark:text-primary-100' : ''
                     }`}
                   />
@@ -527,15 +674,10 @@ const Layout = ({ children }) => {
 
             {/* Right Actions */}
             <div className="flex items-center gap-2">
-              <button
-                disabled
-                className="relative p-2 rounded-lg transition-colors opacity-50 cursor-not-allowed"
-                title="En Desarrollo"
-              >
-                <Bell className="w-5 h-5" />
-              </button>
-
-              <UpdateChecker />
+              {/* Hide update checker on mobile */}
+              <div className="hidden md:block">
+                <UpdateChecker />
+              </div>
 
               <a
                 href="https://github.com/Externoak/LaLigaApp/issues"
@@ -557,16 +699,227 @@ const Layout = ({ children }) => {
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="p-4 lg:p-6 max-w-7xl mx-auto w-full min-h-[calc(100vh-64px)]">
+        {/* Page Content - Add top padding to account for fixed header (h-16 = 64px + spacing) */}
+        <main className={`px-4 lg:px-6 pt-24 pb-4 lg:pb-6 max-w-7xl mx-auto w-full min-h-[calc(100vh-64px)] overflow-x-hidden ${
+          shouldShowDesktopLayout ? '' : 'pb-24 lg:pb-6'
+        }`}>
           {children}
         </main>
       </div>
+
+      {/* Mobile search modal - Full screen on small devices */}
+      {isMobileSearchOpen && !shouldShowDesktopLayout && (
+        <div className="sm:hidden fixed inset-0 z-50 bg-white dark:bg-dark-bg">
+          <div className="flex flex-col h-full">
+            {/* Mobile search header */}
+            <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-dark-border">
+              <button
+                onClick={() => setIsMobileSearchOpen(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex-1 relative" ref={searchRef}>
+                <div className="relative flex items-center bg-gray-100 dark:bg-gray-800 rounded-xl border-2 border-transparent focus-within:border-primary-400">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                    <Search className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Buscar..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(sanitizeSearchTerm(e.target.value))}
+                    className="w-full bg-transparent border-0 outline-none py-3 pl-11 pr-4 text-gray-900 dark:text-gray-100"
+                    autoFocus
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Mobile search results */}
+            <div className="flex-1 overflow-y-auto">
+              {isSearching ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="p-2">
+                  {/* LaLiga Teams Section */}
+                  {searchResults.filter(r => r.type === 'laliga-team').length > 0 && (
+                    <div className="mb-2">
+                      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-2 py-1">
+                        Equipos de la Liga
+                      </h4>
+                      {searchResults
+                        .filter(r => r.type === 'laliga-team')
+                        .map((team, index) => (
+                          <button
+                            key={`laliga-team-${team.id || index}`}
+                            onClick={() => {
+                              navigate(`/laliga-teams?team=${encodeURIComponent(team.name)}`);
+                              setIsMobileSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <div className="flex-shrink-0">
+                              {team.badgeColor ? (
+                                <img
+                                  src={team.badgeColor}
+                                  alt={team.name}
+                                  className="w-10 h-10 rounded-full object-contain"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                                  <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-base font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {team.name}
+                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                {team.playerCount} jugadores
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Players Section */}
+                  {searchResults.filter(r => r.type === 'player').length > 0 && (
+                    <div className="mb-2">
+                      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-2 py-1">
+                        Jugadores
+                      </h4>
+                      {searchResults
+                        .filter(r => r.type === 'player')
+                        .map((player, index) => (
+                          <button
+                            key={`player-${player.id || index}`}
+                            onClick={() => {
+                              navigate(`/players?search=${encodeURIComponent(player.name)}`);
+                              setIsMobileSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <div className="flex-shrink-0">
+                              {player.images?.transparent?.['256x256'] || player.images?.player || player.photo ? (
+                                <img
+                                  src={player.images?.transparent?.['256x256'] || player.images?.player || player.photo}
+                                  alt={player.name}
+                                  className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-600"
+                                  onError={(e) => {
+                                    e.target.style.display = 'none';
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-10 h-10 bg-gradient-to-br from-primary-300 to-primary-500 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600">
+                                  <span className="text-sm font-bold text-white">
+                                    {player.name.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-base font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {player.name}
+                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                {player.team} • {player.position}
+                              </p>
+                            </div>
+                            {player.marketValue && (
+                              <div className="text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                {player.marketValue}€
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  {/* Fantasy Teams Section */}
+                  {searchResults.filter(r => r.type === 'fantasy-team').length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider px-2 py-1">
+                        Equipos Fantasy
+                      </h4>
+                      {searchResults
+                        .filter(r => r.type === 'fantasy-team')
+                        .map((team, index) => (
+                          <button
+                            key={`fantasy-team-${team.id || index}`}
+                            onClick={() => {
+                              navigate(`/teams?search=${encodeURIComponent(team.manager)}`);
+                              setIsMobileSearchOpen(false);
+                              setSearchQuery('');
+                            }}
+                            className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                          >
+                            <div className="flex-shrink-0">
+                              <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center">
+                                <Users className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-base font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {team.name}
+                              </p>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                {team.manager || team.owner}
+                              </p>
+                            </div>
+                            {team.points && (
+                              <div className="text-sm text-primary-600 dark:text-primary-400 font-medium">
+                                {team.points} pts
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              ) : searchQuery.length >= 2 ? (
+                <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  No se encontraron resultados
+                </p>
+              ) : (
+                <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  Escribe al menos 2 caracteres para buscar
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Bottom Navigation - Only show on mobile, not on Electron */}
+      {!shouldShowDesktopLayout && (
+        <MobileNav onMenuClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
+      )}
+
+      {/* Changelog Modal */}
+      <ChangelogModal isOpen={isChangelogOpen} onClose={() => setIsChangelogOpen(false)} />
     </div>
   );
 };
 
 export default Layout;
-
-
-

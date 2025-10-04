@@ -47,7 +47,7 @@ const Modal = ({
     >
       <div className="absolute inset-0 bg-black bg-opacity-50" />
       <div
-        className={`relative z-10 w-full max-w-md max-h-[90vh] overflow-auto rounded-xl bg-white dark:bg-gray-800 shadow-2xl ${className}`}
+        className={`relative z-10 w-[95vw] sm:w-full mx-2 sm:mx-4 max-w-md max-h-[90vh] overflow-auto rounded-xl bg-white dark:bg-gray-800 shadow-2xl ${className}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {children}

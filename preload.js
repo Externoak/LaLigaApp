@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   rollbackUpdate: () => ipcRenderer.invoke('rollback-update'),
 
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
+  getServerAddresses: () => ipcRenderer.invoke('get-server-addresses'),
 
   onUpdateProgress: (cb) => {
     const sub = (_e, d) => cb(d);

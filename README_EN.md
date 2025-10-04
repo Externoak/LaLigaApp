@@ -103,12 +103,14 @@ The project does not encourage or allow circumventing technical measures, prohib
    npm run dev
    ```
 
-   This will start:
-   - React development server on `http://localhost:3006`
-   - CORS proxy server on `http://localhost:3005`
+   This will start a unified server on port 3005 that includes:
+   - Web server with the React application
+   - CORS proxy server for the LaLiga Fantasy API
 
 4. **Open your browser**
-   Navigate to `http://localhost:3006` to access the application
+   Navigate to `http://localhost:3005` to access the application
+
+   **📱 Mobile device access**: The application displays the local network URL on startup (e.g., `http://192.168.x.x:3005`). Use this URL to access from your mobile phone or other devices on the same network. The interface is optimized for mobile devices.
 
 ## 🖥️ Platforms
 
@@ -184,10 +186,9 @@ LaLigaApp/
 
 ### Environment Setup
 
-The application uses a development proxy to handle CORS issues with the La Liga Fantasy API:
+The application uses a unified server that serves both the React application and the CORS proxy:
 
-- **React App**: `http://localhost:3006`
-- **Proxy Server**: `http://localhost:3005`
+- **Unified Server**: `http://localhost:3005`
 - **API Target**: `https://api-fantasy.llt-services.com`
 
 ### Authentication

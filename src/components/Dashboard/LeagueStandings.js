@@ -60,9 +60,9 @@ const LeagueStandings = ({ standings, userTeam }) => {
 
   return (
     <div className="card p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Trophy className="w-5 h-5 text-yellow-500" />
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+      <div className="flex items-center gap-2 mb-4 min-w-0">
+        <Trophy className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate min-w-0">
           Clasificación de la Liga
         </h3>
       </div>

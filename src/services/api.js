@@ -12,10 +12,33 @@ const isDev = process.env.NODE_ENV === 'development';
 
 
 // Smart API base selection
-const API_BASE_URL =
-  (isElectron && isDev) || (!isElectron && isDev)
-    ? 'http://localhost:3005/api'                    // Local proxy in dev
-    : 'https://api-fantasy.llt-services.com/api';    // Real API in prod
+const resolveDevBaseUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+  const host = window.location.hostname || 'localhost';
+  const proxyPort = process.env.REACT_APP_PROXY_PORT || '3005';
+
+  if (isElectron) {
+    return `http://localhost:${proxyPort}/api`;
+  }
+
+  return `${protocol}//${host}:${proxyPort}/api`;
+};
+
+const resolveProdBaseUrl = () => {
+  const configured = process.env.REACT_APP_API_BASE_URL;
+  if (configured) {
+    return configured.replace(/\/$/, '');
+  }
+
+  const origin = window.location.origin;
+  if (origin && origin.startsWith('http')) {
+    return `${origin.replace(/\/$/, '')}/api`;
+  }
+
+  return 'https://api-fantasy.llt-services.com/api';
+};
+
+const API_BASE_URL = isDev ? resolveDevBaseUrl() : resolveProdBaseUrl();
 
 // Minimal axios-like client using fetch with interceptors and timeout
 class ApiClient {
@@ -403,13 +426,21 @@ export const fantasyAPI = {
 
   // Estadísticas de partidos - usar proxy con autenticación
   getMatchStats: async (weekNumber) => {
-
     try {
-        // Use regular axios proxy
-        const proxyBaseUrl = process.env.NODE_ENV === 'development'
-          ? 'http://localhost:3005'  // Proxy local
-          : 'https://api-fantasy.llt-services.com';
-
+        // Determine base URL based on environment
+        let baseUrl;
+        if (isElectron) {
+          // Electron uses the proxy server on localhost
+          baseUrl = 'http://localhost:3005';
+        } else if (isDev) {
+          // Web dev mode: use the same host as the current page with proxy port
+          const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+          const host = window.location.hostname || 'localhost';
+          baseUrl = `${protocol}//${host}:3005`;
+        } else {
+          // Production: use current origin (assumes proxy is on same server)
+          baseUrl = window.location.origin;
+        }
 
         // Get current auth token
         const authStore = useAuthStore.getState();
@@ -428,7 +459,7 @@ export const fantasyAPI = {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), 10000);
         try {
-          const r = await fetch(`${proxyBaseUrl}/stats/v1/stats/week/${weekNumber}?x-lang=es`, {
+          const r = await fetch(`${baseUrl}/stats/v1/stats/week/${weekNumber}?x-lang=es`, {
             method: 'GET',
             headers,
             signal: controller.signal,
@@ -493,63 +524,35 @@ export const fantasyAPI = {
 
     const targetUrl = `https://www.futbolfantasy.com/laliga/equipos/${teamSlug}`;
 
-    try {
-        // For development, try direct fetch first to demonstrate CORS issue
+    const requestThroughProxy = () =>
+      api.get('/v4/scrape/lineup', {
+        params: { url: targetUrl, teamSlug },
+        timeout: 15000,
+      });
 
-        try {
-          // This will likely fail due to CORS, but let's try
-          const directResponse = await fetch(targetUrl, {
-            method: 'GET',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-            },
-            mode: 'cors'
-          });
+    const shouldTryDirect = isDev && !isElectron;
 
-          if (directResponse.ok) {
-            const html = await directResponse.text();
-            return { data: { html, teamSlug, url: targetUrl } };
-          } else {
-            throw new Error(`HTTP ${directResponse.status}: ${directResponse.statusText}`);
-          }
+    if (shouldTryDirect) {
+      try {
+        const directResponse = await fetch(targetUrl, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          },
+          mode: 'cors',
+        });
 
-        } catch (directError) {
-
-          // Fall back to proxy server
-          const proxyBaseUrl = process.env.NODE_ENV === 'development'
-            ? 'http://localhost:3005'
-            : 'https://api-fantasy.llt-services.com';
-
-
-          // Create a scraping endpoint request through our proxy
-          const params = new URLSearchParams({ url: targetUrl, teamSlug });
-          const controller = new AbortController();
-          const id = setTimeout(() => controller.abort(), 15000);
-          try {
-            const r = await fetch(`${proxyBaseUrl}/api/v4/scrape/lineup?${params}`, {
-              method: 'GET',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-lang': 'es'
-              },
-              signal: controller.signal,
-            });
-            clearTimeout(id);
-            const data = await r.json();
-            return { data };
-          } catch (e) {
-            clearTimeout(id);
-            throw e;
-          }
+        if (directResponse.ok) {
+          const html = await directResponse.text();
+          return { data: { html, teamSlug, url: targetUrl } };
         }
-
-    } catch (error) {
-
-      // For development, show what the backend endpoint should return
-
-      throw error;
+      } catch (directError) {
+        // Ignore CORS failures and fall back to proxy
+      }
     }
+
+    return requestThroughProxy();
   },
 
   // Buyout Clause Management

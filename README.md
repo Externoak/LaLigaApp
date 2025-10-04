@@ -103,12 +103,14 @@ El proyecto no fomenta ni permite eludir medidas técnicas, scraping prohibido n
    npm run dev
    ```
 
-   Esto iniciará:
-   - Servidor de desarrollo React en `http://localhost:3006`
-   - Servidor proxy CORS en `http://localhost:3005`
+   Esto iniciará un servidor unificado en el puerto 3005 que incluye:
+   - Servidor web con la aplicación React
+   - Servidor proxy CORS para la API de LaLiga Fantasy
 
 4. **Abrir navegador**
-   Navega a `http://localhost:3006` para acceder a la aplicación
+   Navega a `http://localhost:3005` para acceder a la aplicación
+
+   **📱 Acceso desde dispositivos móviles**: La aplicación muestra la URL de red local al iniciar (ej: `http://192.168.x.x:3005`). Usa esta URL para acceder desde tu móvil u otros dispositivos en la misma red. La interfaz está optimizada para dispositivos móviles.
 
 ## 🖥️ Plataformas
 
@@ -184,10 +186,9 @@ LaLigaApp/
 
 ### Configuración del entorno
 
-La aplicación usa un proxy de desarrollo para manejar problemas CORS con la API de LaLiga Fantasy:
+La aplicación usa un servidor unificado que sirve tanto la aplicación React como el proxy CORS:
 
-- **App React**: `http://localhost:3006`
-- **Servidor Proxy**: `http://localhost:3005`
+- **Servidor Unificado**: `http://localhost:3005`
 - **Target API**: `https://api-fantasy.llt-services.com`
 
 ### Autenticación

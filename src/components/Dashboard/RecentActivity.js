@@ -485,14 +485,14 @@ const RecentActivity = ({ leagueId }) => {
   return (
     <div className="card">
       <div className="p-6 border-b border-gray-200 dark:border-dark-border">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 min-w-0">
           <Link
             to="/activity"
-            className="text-xl font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer"
+            className="text-xl font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 transition-colors cursor-pointer truncate min-w-0"
           >
             Actividad Reciente
           </Link>
-          <Activity className="w-5 h-5 text-gray-400" />
+          <Activity className="w-5 h-5 text-gray-400 flex-shrink-0" />
         </div>
       </div>
 

@@ -1,73 +1,289 @@
 const {app, BrowserWindow, ipcMain, dialog, shell} = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const http = require('http');
 const https = require('https');
-const express = require('express');
-const cors = require('cors');
 const axios = require('axios');
 const isDev = require('electron-is-dev');
 const {spawn} = require('child_process');
 const AdmZip = require('adm-zip');
+const { startServer: startUnifiedServer } = require('./server');
 
 let mainWindow;
-let server;
-let proxyServer = null;
+let unifiedServerInstance = null;
+let serverAccessInfo = { host: null, port: null, urls: [] };
+const activeAppOrigins = new Set();
 
 // Auto-updater configuration - use system temp directory to avoid recursion
 const UPDATE_CONFIG = {
     tempDir: path.join(__dirname, 'temp'),
     // Use system temp directory for backups to avoid infinite recursion
-    backupDir: path.join(require('os').tmpdir(), 'LaLigaApp-Backups'),
+    backupDir: path.join(os.tmpdir(), 'LaLigaApp-Backups'),
     downloadTimeout: 300000, // 5 minutes
     extractTimeout: 120000,  // 2 minutes
 };
+const parsePort = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+};
 
-// Función para crear el servidor proxy interno
-function startInternalProxy() {
-
-    const proxyApp = express();
-
-    // Configurar CORS para permitir todas las requests desde Electron
-    proxyApp.use(cors({
-        origin: true,
-        credentials: true
-    }));
-
-    proxyApp.use(express.json());
-
-    // Proxy endpoint - funciona exactamente como start-port-3005.bat
-    proxyApp.all('/api/*', async (req, res) => {
-        const targetUrl = 'https://api-fantasy.llt-services.com' + req.url;
-
+function isUrlReachable(url, timeout = 2000) {
+    return new Promise((resolve) => {
         try {
-            const response = await axios({
-                method: req.method,
-                url: targetUrl,
-                data: req.body,
-                headers: {
-                    ...req.headers,
-                    host: 'api-fantasy.llt-services.com',
-                    origin: 'https://laligafantasy.relevo.com'
-                }
+            const parsed = new URL(url);
+            const client = parsed.protocol === 'https:' ? https : http;
+            const request = client.request({
+                method: 'HEAD',
+                hostname: parsed.hostname,
+                port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+                path: parsed.pathname + parsed.search,
+                timeout
+            }, (response) => {
+                response.resume();
+                resolve(response.statusCode >= 200 && response.statusCode < 500);
             });
 
-                        res.status(response.status).json(response.data);
+            request.on('timeout', () => {
+                request.destroy();
+                resolve(false);
+            });
+
+            request.on('error', () => resolve(false));
+            request.end();
         } catch (error) {
-            console.error(`❌ [Internal Proxy] Error:`, error.message);
-            if (error.response) {
-                res.status(error.response.status).json(error.response.data);
-            } else {
-                res.status(500).json({error: error.message});
-            }
+            resolve(false);
         }
     });
-
-    // Iniciar el servidor en puerto 3005
-    const server = proxyApp.listen(3005, 'localhost', () => {
-            });
-
-    return server;
 }
+const LOOPBACK_HOSTS = new Set(['0.0.0.0', '::', '::ffff:0.0.0.0', '::1']);
+const DEFAULT_LOCAL_HOSTS = ['localhost', '127.0.0.1'];
+
+const collectLanIPv4Addresses = () => {
+    const addresses = new Set();
+    const interfaces = os.networkInterfaces();
+    Object.values(interfaces).forEach((entries) => {
+        entries?.forEach((entry) => {
+            if (!entry || entry.internal) {
+                return;
+            }
+            const family = typeof entry.family === 'string' ? entry.family : String(entry.family);
+            if (family !== 'IPv4' && family !== '4') {
+                return;
+            }
+            addresses.add(entry.address);
+        });
+    });
+    return Array.from(addresses);
+};
+
+const normalizeHostForUrl = (host) => {
+    if (!host) {
+        return null;
+    }
+    if (host.includes(':') && !host.startsWith('[') && !host.startsWith('http://') && !host.startsWith('https://')) {
+        return '[' + host + ']';
+    }
+    return host;
+};
+
+const getUrlPriority = (url) => {
+    try {
+        const { hostname } = new URL(url);
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) && hostname !== '127.0.0.1') {
+            return 0;
+        }
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return 2;
+        }
+        return 1;
+    } catch {
+        return 3;
+    }
+};
+
+const computeServerAccessUrls = (host, port) => {
+    const hosts = new Set(DEFAULT_LOCAL_HOSTS);
+    if (host && !LOOPBACK_HOSTS.has(host)) {
+        hosts.add(host);
+    } else {
+        collectLanIPv4Addresses().forEach((address) => hosts.add(address));
+    }
+    try {
+        const osHostname = os.hostname();
+        if (osHostname) {
+            hosts.add(osHostname);
+        }
+    } catch {
+        // Ignore hostname resolution errors
+    }
+    const urls = [];
+    hosts.forEach((item) => {
+        const normalized = normalizeHostForUrl(item);
+        if (!normalized) {
+            return;
+        }
+        const base = normalized.startsWith('http://') || normalized.startsWith('https://') ? normalized : 'http://' + normalized;
+        const suffix = port ? ':' + port : '';
+        urls.push(base + suffix);
+    });
+    const unique = Array.from(new Set(urls));
+    unique.sort((a, b) => getUrlPriority(a) - getUrlPriority(b));
+    return unique;
+};
+
+const refreshServerAccessInfo = (host, port) => {
+    const urls = computeServerAccessUrls(host, port);
+    serverAccessInfo = {
+        host,
+        port,
+        urls,
+    };
+    urls.forEach((url) => {
+        try {
+            const origin = new URL(url).origin;
+            activeAppOrigins.add(origin);
+        } catch {
+            // Ignore malformed URLs
+        }
+    });
+};
+
+async function ensureUnifiedServer() {
+    if (unifiedServerInstance) {
+        refreshServerAccessInfo(unifiedServerInstance.host, unifiedServerInstance.port);
+        return unifiedServerInstance;
+    }
+
+    const hostEnv = process.env.ELECTRON_SERVER_HOST || process.env.APP_HOST || process.env.HOST;
+    const host = hostEnv && hostEnv.trim() ? hostEnv.trim() : '0.0.0.0';
+    const envPort = parsePort(process.env.ELECTRON_SERVER_PORT || process.env.APP_PORT || process.env.PORT);
+
+    const baseAppConfig = {
+        host,
+        serveStatic: true,
+    };
+
+    const allowedOriginsEnv = process.env.ELECTRON_ALLOWED_ORIGINS;
+    const allowedOrigins = allowedOriginsEnv
+        ? allowedOriginsEnv
+            .split(',')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        : null;
+
+    const allowedOriginSet = new Set(allowedOrigins && allowedOrigins.length ? allowedOrigins : []);
+
+    const ensureOriginEntry = (origin) => {
+        if (!origin) {
+            return;
+        }
+        allowedOriginSet.add(origin);
+    };
+
+    ensureOriginEntry('app://.');
+    ensureOriginEntry('http://localhost:*');
+    ensureOriginEntry('http://127.0.0.1:*');
+
+    const registerHostOrigins = (value) => {
+        if (!value) {
+            return;
+        }
+        if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('app://')) {
+            ensureOriginEntry(value);
+            return;
+        }
+        const sanitized = value.replace(/\/$/, '');
+        if (!sanitized || LOOPBACK_HOSTS.has(sanitized)) {
+            return;
+        }
+        const wrapped = sanitized.includes(':') && !sanitized.startsWith('[') ? '[' + sanitized + ']' : sanitized;
+        ensureOriginEntry('http://' + wrapped + ':*');
+    };
+
+    if (LOOPBACK_HOSTS.has(host)) {
+        collectLanIPv4Addresses().forEach(registerHostOrigins);
+    } else {
+        registerHostOrigins(host);
+    }
+
+    const portCandidates = [];
+    if (envPort !== undefined) {
+        portCandidates.push(envPort);
+    } else {
+        portCandidates.push(3005);
+    }
+    if (!portCandidates.includes(0)) {
+        portCandidates.push(0);
+    }
+
+    let lastError;
+
+    for (const candidate of portCandidates) {
+        const overrides = {
+            app: {
+                ...baseAppConfig,
+                port: candidate,
+            },
+        };
+
+        if (allowedOriginSet.size > 0) {
+            overrides.security = { allowedOrigins: Array.from(allowedOriginSet) };
+        }
+
+        try {
+            unifiedServerInstance = await startUnifiedServer(overrides);
+
+            const resolvedPort = unifiedServerInstance.port;
+            process.env.ELECTRON_SERVER_PORT = String(resolvedPort);
+            if (!process.env.APP_PORT) {
+                process.env.APP_PORT = String(resolvedPort);
+            }
+            if (!process.env.PORT) {
+                process.env.PORT = String(resolvedPort);
+            }
+
+            const resolvedHost = unifiedServerInstance.host;
+            process.env.ELECTRON_SERVER_HOST = resolvedHost;
+            if (!process.env.APP_HOST) {
+                process.env.APP_HOST = resolvedHost;
+            }
+
+            refreshServerAccessInfo(resolvedHost, resolvedPort);
+
+            try {
+                activeAppOrigins.add(new URL(unifiedServerInstance.url).origin);
+            } catch (error) {
+                console.warn('Failed to record unified server origin:', error.message);
+            }
+
+            return unifiedServerInstance;
+        } catch (error) {
+            lastError = error;
+            if (candidate === 0 || error?.code !== 'EADDRINUSE') {
+                throw error;
+            }
+            console.warn(`Port ${candidate} is in use, retrying with a dynamic port.`);
+            unifiedServerInstance = null;
+            serverAccessInfo = { host: null, port: null, urls: [] };
+        }
+    }
+
+    throw lastError || new Error('Failed to start unified server');
+}
+
+async function stopUnifiedServer() {
+    if (unifiedServerInstance?.close) {
+        try {
+            await unifiedServerInstance.close();
+        } catch (error) {
+            console.error('Failed to stop unified server:', error);
+        }
+    }
+    unifiedServerInstance = null;
+    serverAccessInfo = { host: null, port: null, urls: [] };
+}
+
 
 // Utility functions for auto-update
 function ensureDirectoryExists(dirPath) {
@@ -730,76 +946,95 @@ function processPendingUpdates() {
     });
 }
 
-function createWindow() {
-    // Process any pending updates from previous update that couldn't complete
-    processPendingUpdates().then(() => {
-            });
+async function createWindow() {
+    await processPendingUpdates();
 
-    // Iniciar el servidor proxy interno
-    proxyServer = startInternalProxy();
+    activeAppOrigins.clear();
 
-    // Create the browser window
+    const preloadPath = path.join(__dirname, 'preload.js');
+    const devServerUrl = process.env.ELECTRON_START_URL || 'http://localhost:3006';
+    const buildPath = path.join(__dirname, 'build', 'index.html');
+    const buildExists = fs.existsSync(buildPath);
+    const useUnifiedServer = buildExists && (!isDev || process.env.ELECTRON_USE_UNIFIED_SERVER === 'true');
+
+    let targetUrl = devServerUrl;
+
+    if (useUnifiedServer) {
+        try {
+            const serverInstance = await ensureUnifiedServer();
+            targetUrl = serverInstance.url;
+        } catch (error) {
+            console.error('Failed to start unified server, falling back to dev server:', error);
+            targetUrl = devServerUrl;
+        }
+    } else if (buildExists) {
+        const reachable = await isUrlReachable(devServerUrl, 2000);
+        if (!reachable) {
+            try {
+                const serverInstance = await ensureUnifiedServer();
+                targetUrl = serverInstance.url;
+            } catch (error) {
+                console.error('Dev server unavailable and failed to start unified server, retry dev URL:', error);
+                targetUrl = devServerUrl;
+            }
+        }
+    }
+
+    try {
+        const origin = new URL(targetUrl).origin;
+        activeAppOrigins.add(origin);
+    } catch (error) {
+        console.warn('Invalid application URL:', targetUrl, error);
+    }
     mainWindow = new BrowserWindow({
         width: 1400,
         height: 900,
-        title: 'LaLiga Fantasy App', // Window title
+        title: 'LaLiga Fantasy App',
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
             enableRemoteModule: false,
-            preload: path.join(__dirname, 'preload.js') // We'll create this
+            preload: preloadPath
         },
-        icon: path.join(__dirname, 'build-resources/fantasy_logo_transparent.png'), // App icon
-        show: false, // Don't show until ready
-        autoHideMenuBar: true // Hide menu bar (File, Edit, View, etc.)
+        icon: path.join(__dirname, 'build-resources/fantasy_logo_transparent.png'),
+        show: false,
+        autoHideMenuBar: true
     });
+
     mainWindow.webContents.setWindowOpenHandler(({url}) => {
         try {
-            const u = new URL(url);
-            const isAppUrl =
-                u.origin === 'http://localhost:3006' ||          // dev
-                u.origin === 'http://127.0.0.1:3006' ||
-                url.startsWith('file://');                       // prod (served file:// if you switch later)
-
-            if (isAppUrl) {
+            const parsed = new URL(url);
+            if (activeAppOrigins.has(parsed.origin) || parsed.protocol === 'file:') {
                 return {
                     action: 'allow',
                     overrideBrowserWindowOptions: {
                         webPreferences: {
                             contextIsolation: true,
                             nodeIntegration: false,
-                            preload: path.join(__dirname, 'preload.js'), // 👈 inject the same preload
+                            preload: preloadPath,
                         }
                     }
                 };
             }
-
-            // Open any external links in the system browser
-            shell.openExternal(url);
-            return {action: 'deny'};
-        } catch {
-            // If URL parsing fails, be safe: open externally
-            shell.openExternal(url);
-            return {action: 'deny'};
+        } catch (error) {
+            console.warn('Failed to parse URL for window open handler:', url, error);
         }
+
+        shell.openExternal(url);
+        return {action: 'deny'};
     });
-    // Verify preload file exists at runtime
-    const preloadPath = path.join(__dirname, 'preload.js');
 
     mainWindow.webContents.on('preload-error', (_e, path, err) => {
         console.error('[main] PRELOAD ERROR at', path, err);
     });
 
-// If the preload throws, this event fires
     mainWindow.webContents.on('preload-error', (_event, path, error) => {
         console.error('[main] PRELOAD ERROR at', path, error);
     });
 
-// Pipe renderer console to main console so you see preload logs
     mainWindow.webContents.on('console-message', (_e, level, message) => {
             });
 
-// After first load, ask the renderer what it sees
     mainWindow.webContents.on('did-finish-load', () => {
         mainWindow.webContents.executeJavaScript(`
     console.log('bridge-check', {
@@ -810,56 +1045,37 @@ function createWindow() {
   `);
     });
 
+    const normalizedTarget = targetUrl.endsWith('/') ? targetUrl : targetUrl + '/';
+    mainWindow.loadURL(normalizedTarget).catch((error) => {
+        console.error('Failed to load application URL:', normalizedTarget, error);
+    });
 
-    // Check if build files exist to determine mode
-    const buildPath = path.join(__dirname, 'build', 'index.html');
-    const buildExists = fs.existsSync(buildPath);
-
-
-    if (buildExists) {
-        // Production mode - load built files
-                const fileUrl = `file://${buildPath}`;
-
-        mainWindow.loadFile(buildPath).catch(err => {
-            console.error('❌ Failed to load index.html:', err);
-            // Fallback to URL method
-            mainWindow.loadURL(fileUrl);
-        });
-    } else {
-        // Dev mode or no build files - load from React dev server
-                        mainWindow.loadURL('http://localhost:3006');
-    }
-
-    // Show window when ready
     mainWindow.once('ready-to-show', () => {
         mainWindow.show();
     });
 
     mainWindow.on('closed', () => {
         mainWindow = null;
-        if (server) server.close();
+        stopUnifiedServer();
     });
 }
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-    // Cerrar el servidor proxy
-    if (proxyServer) {
-        proxyServer.close(() => {
-                    });
-    }
+    stopUnifiedServer();
 
     if (process.platform !== 'darwin') {
-        if (server) server.close();
         app.quit();
     }
 });
-
 app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow().catch((error) => {
+            console.error('Failed to recreate window:', error);
+        });
+    }
 });
-
 // IPC Handler for API requests
 ipcMain.handle('api-request', async (event, options) => {
     try {
@@ -1203,6 +1419,27 @@ ipcMain.handle('restart-app', async () => {
 });
 
 // Optional: Handle app updates via file dialog (fallback)
+ipcMain.handle('get-server-addresses', async () => {
+    try {
+        if (!unifiedServerInstance) {
+            await ensureUnifiedServer();
+        }
+        const instance = unifiedServerInstance;
+        const info = serverAccessInfo;
+        const urls = Array.isArray(info?.urls) && info.urls.length
+            ? info.urls
+            : (instance?.url ? [instance.url] : []);
+        return {
+            host: info?.host ?? instance?.host ?? null,
+            port: info?.port ?? instance?.port ?? null,
+            urls,
+        };
+    } catch (error) {
+        console.error('Failed to resolve server addresses:', error);
+        return { host: null, port: null, urls: [] };
+    }
+});
+
 ipcMain.handle('open-file-dialog', async () => {
     try {
         const result = await dialog.showOpenDialog(mainWindow, {
@@ -1330,4 +1567,27 @@ ipcMain.handle('file-exists', async (event, filePath) => {
         return false;
     }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

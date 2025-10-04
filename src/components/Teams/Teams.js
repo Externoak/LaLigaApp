@@ -282,16 +282,16 @@ const Teams = () => {
                 isUser ? 'bg-primary-50 dark:bg-primary-900/10 border-l-4 border-primary-500' : ''
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 overflow-hidden">
                 {/* Team Info */}
-                <div className="flex items-center gap-4 flex-1">
+                <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
                   {/* Position */}
-                  <div className="flex items-center gap-2 min-w-[80px]">
+                  <div className="flex items-center gap-1 min-w-[60px] xl:min-w-[80px] flex-shrink-0">
                     {position <= 3 && (
-                      <Trophy className="w-5 h-5 text-yellow-500" />
+                      <Trophy className="w-4 h-4 xl:w-5 xl:h-5 text-yellow-500" />
                     )}
-                    <span className={`text-lg font-bold px-3 py-1 rounded-full ${
-                      position <= 3 
+                    <span className={`text-base xl:text-lg font-bold px-2 xl:px-3 py-1 rounded-full ${
+                      position <= 3
                         ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
                         : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
                     }`}>
@@ -300,70 +300,67 @@ const Teams = () => {
                   </div>
 
                   {/* Manager Avatar & Info */}
-                  <div className="flex items-center gap-4 flex-1">
-                    <div className="w-12 h-12 bg-gradient-to-br from-primary-400 to-primary-500 rounded-full flex items-center justify-center">
-                      <span className="text-white text-lg font-bold">
+                  <div className="flex items-center gap-2 xl:gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 xl:w-12 xl:h-12 bg-gradient-to-br from-primary-400 to-primary-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-base xl:text-lg font-bold">
                         {getUserName(item).charAt(0)}
                       </span>
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base xl:text-xl font-semibold text-gray-900 dark:text-white truncate">
                           {getUserName(item)}
                         </h3>
                         {isUser && (
-                          <span className="badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400">
+                          <span className="badge bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400 flex-shrink-0">
                             Tú
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-                        <User className="w-4 h-4" />
-                        <span>{getTeamName(item)}</span>
+                      <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 truncate">
+                        <User className="w-3 h-3 xl:w-4 xl:h-4 flex-shrink-0" />
+                        <span className="truncate">{getTeamName(item)}</span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Stats */}
-                  <div className="hidden sm:flex items-center gap-8 mr-8">
-                    <div className="text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Subida Valor
-                      </p>
-                      <p className={`text-sm font-medium ${
-                        getTeamMarketIncrease(item) > 0
-                          ? 'text-green-600 dark:text-green-400'
-                          : getTeamMarketIncrease(item) < 0
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}>
-                        {formatMarketChange(getTeamMarketIncrease(item))}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {trendsInitialized ? 'últimas 24h' : 'cargando...'}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Puntos
-                      </p>
-                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {formatNumber(getTeamPoints(item))}
-                      </p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                        Valor
-                      </p>
-                      <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                        {formatCurrency(getTeamValue(item))}
-                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex items-center gap-3">
+                {/* Stats - Responsive Grid */}
+                <div className="grid grid-cols-3 xl:flex xl:items-center gap-4 xl:gap-8 text-center xl:text-left overflow-hidden">
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
+                      Puntos
+                    </p>
+                    <p className="text-lg xl:text-2xl font-bold text-gray-900 dark:text-white truncate">
+                      {formatNumber(getTeamPoints(item))}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
+                      Valor
+                    </p>
+                    <p className="text-sm xl:text-lg font-semibold text-gray-900 dark:text-white truncate">
+                      {formatCurrency(getTeamValue(item))}
+                    </p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
+                      Subida 24h
+                    </p>
+                    <p className={`text-sm font-medium truncate ${
+                      getTeamMarketIncrease(item) > 0
+                        ? 'text-green-600 dark:text-green-400'
+                        : getTeamMarketIncrease(item) < 0
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}>
+                      {formatMarketChange(getTeamMarketIncrease(item))}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions - Desktop */}
+                <div className="hidden md:flex items-center gap-3">
                   <Link
                     to={`/teams/${teamId}/lineup`}
                     className="btn-secondary flex items-center gap-2"
@@ -382,25 +379,23 @@ const Teams = () => {
                 </div>
               </div>
 
-              {/* Mobile Stats */}
-              <div className="sm:hidden mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
-                <div className="flex justify-between text-center">
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Puntos
-                    </p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">
-                      {formatNumber(getTeamPoints(item))}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      Valor
-                    </p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {formatCurrency(getTeamValue(item))}
-                    </p>
-                  </div>
+              {/* Mobile Actions - Big Touch-Friendly Buttons */}
+              <div className="md:hidden mt-4 pt-4 border-t border-gray-200 dark:border-dark-border">
+                <div className="grid grid-cols-2 gap-3">
+                  <Link
+                    to={`/teams/${teamId}/lineup`}
+                    className="btn-primary flex items-center justify-center gap-2 py-3 text-base font-semibold"
+                  >
+                    <Target className="w-5 h-5" />
+                    <span>Alineación</span>
+                  </Link>
+                  <Link
+                    to={`/teams/${teamId}/players`}
+                    className="btn-secondary flex items-center justify-center gap-2 py-3 text-base font-semibold"
+                  >
+                    <Users className="w-5 h-5" />
+                    <span>Jugadores</span>
+                  </Link>
                 </div>
               </div>
             </motion.div>
