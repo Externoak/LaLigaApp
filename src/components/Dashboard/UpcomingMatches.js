@@ -80,9 +80,9 @@ const UpcomingMatches = ({ matches }) => {
 
   return (
     <div className="card p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Calendar className="w-5 h-5 text-primary-500" />
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+      <div className="flex items-center gap-2 mb-4 min-w-0">
+        <Calendar className="w-5 h-5 text-primary-500 flex-shrink-0" />
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate min-w-0">
           Próximos Partidos
         </h3>
       </div>
@@ -171,19 +171,19 @@ const UpcomingMatches = ({ matches }) => {
               </div>
 
               {/* Desktop/Electron Layout */}
-              <div className="hidden md:flex md:flex-col md:gap-4 w-full">
+              <div className="hidden md:flex md:flex-col md:gap-4 w-full overflow-hidden">
                 {/* Teams */}
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-4 md:flex-1">
-                  <div className="flex items-center gap-2 min-w-0 sm:flex-1">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-4 md:flex-1 overflow-hidden">
+                  <div className="flex items-center gap-2 min-w-0 sm:flex-1 overflow-hidden">
                     {getTeamShield(match.local) && (
                       <img
                         src={getTeamShield(match.local)}
                         alt={getTeamName(match.local)}
-                        className="w-6 h-6 object-contain"
+                        className="w-6 h-6 object-contain flex-shrink-0"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     )}
-                    <span className="font-medium text-gray-900 dark:text-white text-sm leading-tight truncate">
+                    <span className="font-medium text-gray-900 dark:text-white text-sm leading-tight truncate min-w-0">
                       {getTeamName(match.local)}
                     </span>
                   </div>
@@ -195,38 +195,38 @@ const UpcomingMatches = ({ matches }) => {
                     }
                   </span>
 
-                  <div className="flex items-center gap-2 min-w-0 sm:flex-1 sm:justify-end">
+                  <div className="flex items-center gap-2 min-w-0 sm:flex-1 sm:justify-end overflow-hidden">
                     {getTeamShield(match.visitor) && (
                       <img
                         src={getTeamShield(match.visitor)}
                         alt={getTeamName(match.visitor)}
-                        className="w-6 h-6 object-contain"
+                        className="w-6 h-6 object-contain flex-shrink-0"
                         onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     )}
-                    <span className="font-medium text-gray-900 dark:text-white text-sm leading-tight truncate text-right">
+                    <span className="font-medium text-gray-900 dark:text-white text-sm leading-tight truncate text-right min-w-0">
                       {getTeamName(match.visitor)}
                     </span>
                   </div>
                 </div>
 
                 {/* Match Info */}
-                <div className="flex flex-col gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <div className="flex w-full flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1 text-left">
-                      <Clock className="w-3 h-3" />
-                      <span>{formatMatchDate(match.matchDate || match.date || match.kickoff)}</span>
+                <div className="flex flex-col gap-2 text-xs text-gray-500 dark:text-gray-400 overflow-hidden">
+                  <div className="flex w-full flex-wrap items-center justify-between gap-2 overflow-hidden">
+                    <div className="flex items-center gap-1 text-left min-w-0 flex-shrink">
+                      <Clock className="w-3 h-3 flex-shrink-0" />
+                      <span className="truncate">{formatMatchDate(match.matchDate || match.date || match.kickoff)}</span>
                     </div>
                     {getMatchStatus(match) && (
-                      <div className="text-xs font-medium text-red-600 dark:text-red-400 ml-auto text-right">
+                      <div className="text-xs font-medium text-red-600 dark:text-red-400 ml-auto text-right flex-shrink-0">
                         {getMatchStatus(match)}
                       </div>
                     )}
                   </div>
                   {match.venue && (
-                    <div className="flex items-center gap-1 text-left">
-                      <MapPin className="w-3 h-3" />
-                      <span className="truncate max-w-full sm:max-w-[14rem]">{match.venue}</span>
+                    <div className="flex items-center gap-1 text-left overflow-hidden">
+                      <MapPin className="w-3 h-3 flex-shrink-0" />
+                      <span className="truncate">{match.venue}</span>
                     </div>
                   )}
                 </div>

@@ -110,9 +110,9 @@ const TeamSelector = ({ teams, selectedTeam, onTeamSelect, loading = false }) =>
             </div>
 
             {/* Team Name */}
-            <div className={`text-xs font-medium text-center transition-colors duration-200 ${
-              selectedTeam === team.slug 
-                ? 'text-primary-700 dark:text-primary-300' 
+            <div className={`text-xs font-medium text-center transition-colors duration-200 truncate w-full ${
+              selectedTeam === team.slug
+                ? 'text-primary-700 dark:text-primary-300'
                 : 'text-gray-600 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100'
             }`}>
               {team.name}
@@ -135,8 +135,8 @@ const TeamSelector = ({ teams, selectedTeam, onTeamSelect, loading = false }) =>
 
       {/* Selected team info */}
       {selectedTeam && (
-        <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <div className="flex items-center gap-3">
+        <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-3 min-w-0">
             <img
               src={getTeamLogo(teams.find(t => t.slug === selectedTeam))}
               alt={teams.find(t => t.slug === selectedTeam)?.name}
@@ -152,11 +152,11 @@ const TeamSelector = ({ teams, selectedTeam, onTeamSelect, loading = false }) =>
               {teams.find(t => t.slug === selectedTeam)?.name?.charAt(0)}
             </div>
             
-            <div>
-              <p className="font-semibold text-gray-900 dark:text-gray-100">
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                 {teams.find(t => t.slug === selectedTeam)?.fullName}
               </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                 Alineación probable seleccionada
               </p>
             </div>

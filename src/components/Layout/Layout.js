@@ -401,7 +401,7 @@ const Layout = ({ children }) => {
   const shouldShowDesktopLayout = isElectron;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-dark-bg">
+    <div className="min-h-screen bg-gray-50 dark:bg-dark-bg overflow-x-hidden">
       <ApiStatus />
 
       {/* Sidebar - Hidden on mobile (<1024px) unless Electron */}
@@ -608,8 +608,8 @@ const Layout = ({ children }) => {
             </button>
 
             {/* Enhanced Search Bar - Hidden on small mobile, visible on larger screens */}
-            <div className="hidden sm:flex flex-1 max-w-4xl mx-6" ref={searchRef}>
-              <div className="relative w-full">
+            <div className="hidden sm:flex flex-1 max-w-4xl mx-2 md:mx-6" ref={searchRef}>
+              <div className="relative w-full overflow-hidden">
                 {/* Search Container with Enhanced Design */}
                 <div className={`relative flex items-center bg-white dark:bg-dark-card rounded-xl border-2 transition-all duration-200 shadow-sm hover:shadow-md ${
                   showSearchResults || searchQuery 
@@ -633,7 +633,7 @@ const Layout = ({ children }) => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(sanitizeSearchTerm(e.target.value))}
                     onFocus={() => searchQuery.trim().length >= 2 && setShowSearchResults(true)}
-                    className={`w-full bg-transparent border-0 outline-none py-3.5 pl-12 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 font-medium transition-all duration-200 ${
+                    className={`w-full bg-transparent border-0 outline-none py-3.5 pl-12 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 font-medium transition-all duration-200 truncate ${
                       showSearchResults || searchQuery ? 'text-primary-900 dark:text-primary-100' : ''
                     }`}
                   />
@@ -700,7 +700,7 @@ const Layout = ({ children }) => {
         </header>
 
         {/* Page Content - Add top padding to account for fixed header (h-16 = 64px + spacing) */}
-        <main className={`px-4 lg:px-6 pt-24 pb-4 lg:pb-6 max-w-7xl mx-auto w-full min-h-[calc(100vh-64px)] ${
+        <main className={`px-4 lg:px-6 pt-24 pb-4 lg:pb-6 max-w-7xl mx-auto w-full min-h-[calc(100vh-64px)] overflow-x-hidden ${
           shouldShowDesktopLayout ? '' : 'pb-24 lg:pb-6'
         }`}>
           {children}

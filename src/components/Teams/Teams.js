@@ -282,15 +282,15 @@ const Teams = () => {
                 isUser ? 'bg-primary-50 dark:bg-primary-900/10 border-l-4 border-primary-500' : ''
               }`}
             >
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 overflow-hidden">
                 {/* Team Info */}
-                <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex items-center gap-3 flex-1 min-w-0 overflow-hidden">
                   {/* Position */}
-                  <div className="flex items-center gap-1 min-w-[60px] sm:min-w-[80px] flex-shrink-0">
+                  <div className="flex items-center gap-1 min-w-[60px] xl:min-w-[80px] flex-shrink-0">
                     {position <= 3 && (
-                      <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
+                      <Trophy className="w-4 h-4 xl:w-5 xl:h-5 text-yellow-500" />
                     )}
-                    <span className={`text-base sm:text-lg font-bold px-2 sm:px-3 py-1 rounded-full ${
+                    <span className={`text-base xl:text-lg font-bold px-2 xl:px-3 py-1 rounded-full ${
                       position <= 3
                         ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
                         : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
@@ -300,15 +300,15 @@ const Teams = () => {
                   </div>
 
                   {/* Manager Avatar & Info */}
-                  <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-primary-400 to-primary-500 rounded-full flex items-center justify-center flex-shrink-0">
-                      <span className="text-white text-base sm:text-lg font-bold">
+                  <div className="flex items-center gap-2 xl:gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 xl:w-12 xl:h-12 bg-gradient-to-br from-primary-400 to-primary-500 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-base xl:text-lg font-bold">
                         {getUserName(item).charAt(0)}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base sm:text-xl font-semibold text-gray-900 dark:text-white truncate">
+                        <h3 className="text-base xl:text-xl font-semibold text-gray-900 dark:text-white truncate">
                           {getUserName(item)}
                         </h3>
                         {isUser && (
@@ -318,7 +318,7 @@ const Teams = () => {
                         )}
                       </div>
                       <div className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 truncate">
-                        <User className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <User className="w-3 h-3 xl:w-4 xl:h-4 flex-shrink-0" />
                         <span className="truncate">{getTeamName(item)}</span>
                       </div>
                     </div>
@@ -326,28 +326,28 @@ const Teams = () => {
                 </div>
 
                 {/* Stats - Responsive Grid */}
-                <div className="grid grid-cols-3 sm:flex sm:items-center gap-4 sm:gap-8 text-center sm:text-left">
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                <div className="grid grid-cols-3 xl:flex xl:items-center gap-4 xl:gap-8 text-center xl:text-left overflow-hidden">
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
                       Puntos
                     </p>
-                    <p className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
+                    <p className="text-lg xl:text-2xl font-bold text-gray-900 dark:text-white truncate">
                       {formatNumber(getTeamPoints(item))}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
                       Valor
                     </p>
-                    <p className="text-sm sm:text-lg font-semibold text-gray-900 dark:text-white">
+                    <p className="text-sm xl:text-lg font-semibold text-gray-900 dark:text-white truncate">
                       {formatCurrency(getTeamValue(item))}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  <div className="min-w-0">
+                    <p className="text-xs xl:text-sm text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
                       Subida 24h
                     </p>
-                    <p className={`text-sm font-medium ${
+                    <p className={`text-sm font-medium truncate ${
                       getTeamMarketIncrease(item) > 0
                         ? 'text-green-600 dark:text-green-400'
                         : getTeamMarketIncrease(item) < 0

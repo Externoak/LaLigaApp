@@ -91,7 +91,7 @@ const ChangelogModal = ({ isOpen, onClose }) => {
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-3xl md:max-h-[80vh] z-50 bg-white dark:bg-dark-card rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="fixed inset-4 md:inset-auto md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-[calc(100vw-2rem)] md:w-full md:max-w-3xl md:max-h-[80vh] z-50 bg-white dark:bg-dark-card rounded-2xl shadow-2xl overflow-hidden flex flex-col"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-200 dark:border-dark-border bg-gradient-to-r from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20">

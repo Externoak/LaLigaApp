@@ -484,9 +484,9 @@ const Lineup = ({ teamId: propTeamId }) => {
           </div>
 
           {/* Controls Section */}
-          <div className="flex flex-col sm:flex-row items-center gap-3 lg:ml-auto">
+          <div className="flex flex-col 2xl:flex-row items-center gap-3 2xl:ml-auto w-full 2xl:w-auto">
             {/* Modern Team Selector */}
-            <div className="w-full sm:w-auto min-w-0 lg:min-w-[420px] relative">
+            <div className="w-full 2xl:w-auto min-w-0 2xl:min-w-[420px] relative">
               <div className="relative">
                 {/* Trigger Button */}
                 <button
@@ -600,7 +600,7 @@ const Lineup = ({ teamId: propTeamId }) => {
             </div>
 
             {/* Week Selector */}
-            <div className="flex items-center justify-center gap-2 flex-shrink-0">
+            <div className="flex items-center justify-center gap-2 flex-shrink-0 w-full 2xl:w-auto">
               <button
                 onClick={() => setSelectedWeek(Math.max(1, selectedWeek - 1))}
                 disabled={selectedWeek <= 1}
@@ -637,7 +637,7 @@ const Lineup = ({ teamId: propTeamId }) => {
             <button
               onClick={fetchLineupData}
               disabled={loading}
-              className="flex items-center justify-center gap-2 px-4 py-2 h-10 text-white rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none disabled:opacity-70 flex-shrink-0"
+              className="flex items-center justify-center gap-2 px-4 py-2 h-10 text-white rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 disabled:transform-none disabled:opacity-70 flex-shrink-0 w-full 2xl:w-auto"
               style={{background: 'linear-gradient(135deg, #0A6522, #083d1a)'}}
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -685,7 +685,9 @@ const Lineup = ({ teamId: propTeamId }) => {
             <div className="absolute inset-4 border-2 border-white/30 rounded-lg border-t-0">
               <div className="w-full h-full flex flex-col justify-between pt-8">
 
-                {formation.rows.map((row, rowIndex) => (
+                {formation.rows.map((row, rowIndex) => {
+                  const isGoalkeeperRow = rowIndex === formation.rows.length - 1;
+                  return (
                   <div
                     key={rowIndex}
                     className="flex justify-center items-center"
@@ -711,7 +713,7 @@ const Lineup = ({ teamId: propTeamId }) => {
                             className="relative group"
                           >
                             <div
-                              className="w-14 h-14 sm:w-20 sm:h-20 m-2 sm:m-5 -mt-6 sm:-mt-10 bg-white/90 dark:bg-gray-800/90 rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative cursor-pointer"
+                              className={`w-14 h-14 sm:w-20 sm:h-20 m-2 sm:m-5 ${isGoalkeeperRow ? '-mt-12 sm:-mt-16' : '-mt-6 sm:-mt-10'} bg-white/90 dark:bg-gray-800/90 rounded-full border-2 border-gray-300 dark:border-gray-600 flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative cursor-pointer`}
                               onClick={() => player && handlePlayerClick(player)}
                             >
                               {player ? (
@@ -819,7 +821,8 @@ const Lineup = ({ teamId: propTeamId }) => {
                       })}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
               </div>
             </div>

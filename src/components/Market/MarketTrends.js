@@ -776,8 +776,8 @@ const MarketTrends = () => {
 
               {/* Desktop Layout */}
               <div className="hidden md:block p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                <div className="flex items-center justify-between gap-4 overflow-hidden">
+                  <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
                     {/* Rank */}
                     <div className="flex-shrink-0">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center text-base font-bold ${
@@ -790,8 +790,8 @@ const MarketTrends = () => {
                     </div>
 
                     {/* Player Info with Image */}
-                    <div className="flex items-center gap-4">
-                      <div className={`w-16 h-16 ${getPlayerImageBackground(player.positionId)} rounded-full flex items-center justify-center overflow-hidden`}>
+                    <div className="flex items-center gap-4 flex-1 min-w-0 overflow-hidden">
+                      <div className={`w-16 h-16 ${getPlayerImageBackground(player.positionId)} rounded-full flex items-center justify-center overflow-hidden flex-shrink-0`}>
                         {player.images?.transparent?.['256x256'] ? (
                           <img
                             src={player.images.transparent['256x256']}
@@ -807,27 +807,27 @@ const MarketTrends = () => {
                           </span>
                         )}
                       </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
                           {player.name}
                         </h3>
-                        <p className="text-base text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${getPositionColor(player.positionId)}`}>
+                        <p className="text-base text-gray-500 dark:text-gray-400 flex items-center gap-2 overflow-hidden">
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium flex-shrink-0 ${getPositionColor(player.positionId)}`}>
                             {player.positionName}
                           </span>
-                          <div className="flex items-center gap-2">
-                            <span>{player.team?.name}</span>
+                          <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                            <span className="truncate">{player.team?.name}</span>
                             {player.team?.badgeColor && (
                               <img
                                 src={player.team.badgeColor}
                                 alt={`${player.team.name} badge`}
-                                className="w-6 h-6 object-contain"
+                                className="w-6 h-6 object-contain flex-shrink-0"
                                 onError={(e) => { e.target.style.display = 'none'; }}
                               />
                             )}
                           </div>
                           {!player.matchedPlayer && (
-                            <span className="px-3 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 text-sm rounded-full">
+                            <span className="px-3 py-1 bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 text-sm rounded-full flex-shrink-0">
                               Sin match
                             </span>
                           )}
@@ -836,46 +836,46 @@ const MarketTrends = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-6 flex-shrink-0">
                     {/* Trend Icon */}
-                    <div className="text-center">
+                    <div className="text-center flex-shrink-0">
                       <div className="text-3xl mb-1">
                         {player.trendData.tendencia}
                       </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <div className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         24h
                       </div>
                     </div>
 
                     {/* Value Change */}
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0 min-w-0">
                       <div className="flex items-center justify-end gap-2">
-                        <div className="w-5 h-5">{getChangeIcon(player.trendData.diferencia1)}</div>
-                        <span className={`text-lg font-semibold ${getChangeColor(player.trendData.diferencia1)}`}>
+                        <div className="w-5 h-5 flex-shrink-0">{getChangeIcon(player.trendData.diferencia1)}</div>
+                        <span className={`text-lg font-semibold truncate ${getChangeColor(player.trendData.diferencia1)}`}>
                           {player.trendData.cambioTexto}
                         </span>
                       </div>
-                      <div className={`text-base ${getChangeColor(player.trendData.porcentaje)}`}>
+                      <div className={`text-base truncate ${getChangeColor(player.trendData.porcentaje)}`}>
                         {player.trendData.porcentaje > 0 ? '+' : ''}{player.trendData.porcentaje.toFixed(1)}%
                       </div>
                     </div>
 
                     {/* Current Value */}
-                    <div className="text-right">
-                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-lg font-bold text-gray-900 dark:text-white whitespace-nowrap">
                         {formatCurrency(player.price)}
                       </div>
-                      <div className="text-base text-gray-500 dark:text-gray-400">
+                      <div className="text-base text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         Valor actual
                       </div>
                     </div>
 
                     {/* Last Updated */}
-                    <div className="hidden md:block text-right">
-                      <div className="text-base text-gray-600 dark:text-gray-300">
+                    <div className="hidden lg:block text-right flex-shrink-0">
+                      <div className="text-base text-gray-600 dark:text-gray-300 whitespace-nowrap">
                         Actualizado
                       </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <div className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {player.trendData.lastUpdated ? new Date(player.trendData.lastUpdated).toLocaleDateString('es-ES') : 'N/A'}
                       </div>
                     </div>

@@ -234,7 +234,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
       >
         <animated.div
           style={modalSpring}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full mx-4 max-w-4xl max-h-[90vh] overflow-hidden"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[95vw] sm:w-full mx-2 sm:mx-4 max-w-4xl max-h-[90vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
