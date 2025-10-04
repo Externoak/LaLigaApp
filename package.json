@@ -96,6 +96,9 @@
       "server/**/*"
     ],
     "asar": false,
+    "buildDependenciesFromSource": false,
+    "nodeGypRebuild": false,
+    "npmRebuild": false,
     "artifactName": "LaLiga-Fantasy-App.${ext}",
     "win": {
       "target": [
