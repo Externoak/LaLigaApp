@@ -11,10 +11,16 @@ const ChangelogModal = ({ isOpen, onClose }) => {
       // Fetch version.json from GitHub (same as updateService)
       const updateCheckUrl = process.env.REACT_APP_UPDATE_CHECK_URL || 'https://raw.githubusercontent.com/Externoak/LaLigaApp/master/version.json';
 
-      fetch(updateCheckUrl, {
+      // Check if we're in Electron or browser
+      const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
+
+      // Construct the fetch URL - use proxy for browser
+      const fetchUrl = isElectron ? updateCheckUrl : `/api/proxy-github?url=${encodeURIComponent(updateCheckUrl)}`;
+
+      fetch(fetchUrl, {
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'LaLigaWeb-ChangelogViewer'
+          ...(isElectron ? { 'User-Agent': 'LaLigaWeb-ChangelogViewer' } : {})
         }
       })
         .then(res => {

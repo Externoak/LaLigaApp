@@ -326,6 +326,60 @@ const buildMarketHandler = (config) => {
     }
   };
 };
+const buildGitHubProxyHandler = (config) => {
+  const allowedHosts = new Set(['raw.githubusercontent.com', 'github.com']);
+  const githubHeaders = {
+    Accept: 'application/json',
+    'User-Agent': 'LaLigaWeb-ChangelogViewer',
+  };
+
+  return async (req, res) => {
+    const targetUrl = req.query.url;
+
+    if (!targetUrl) {
+      res.status(400).json({ error: 'Missing parameters', message: 'url is required' });
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch (error) {
+      res.status(400).json({ error: 'Invalid URL', message: error.message });
+      return;
+    }
+
+    if (!allowedHosts.has(parsed.hostname)) {
+      res.status(403).json({ error: 'Host not allowed' });
+      return;
+    }
+
+    try {
+      const response = await axios.get(targetUrl, {
+        headers: githubHeaders,
+        timeout: config.proxy.timeoutMs,
+        responseType: 'json',
+      });
+
+      const origin = req.headers.origin;
+      if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+      }
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+      res.json(response.data);
+    } catch (error) {
+      const status = error.response?.status || 502;
+      res.status(status).json({
+        error: 'GitHub fetch failed',
+        message: error.message,
+        status,
+      });
+    }
+  };
+};
+
 const buildLineupHandler = (config) => {
   const allowedHosts = new Set(config.proxy.lineupAllowedHosts);
   const lineupHeaders = {
@@ -408,6 +462,7 @@ const buildApp = (config) => {
   const fantasyProxy = createFantasyProxy(config);
   const lineupHandler = buildLineupHandler(config);
   const marketHandler = buildMarketHandler(config);
+  const githubProxyHandler = buildGitHubProxyHandler(config);
 
   if (config.app.trustProxy) {
     app.set('trust proxy', config.app.trustProxy);
@@ -486,9 +541,11 @@ const buildApp = (config) => {
   app.use(config.proxy.statsBasePath, limiter);
   app.use(config.proxy.lineupPath, limiter);
   app.use(config.proxy.marketPath, limiter);
+  app.use('/api/proxy-github', limiter);
 
   app.get(config.proxy.lineupPath, lineupHandler);
   app.get(config.proxy.marketPath, marketHandler);
+  app.get('/api/proxy-github', githubProxyHandler);
   app.use(fantasyProxy);
 
   const resolvedStaticDir = config.app.staticDir;

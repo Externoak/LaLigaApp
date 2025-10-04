@@ -411,7 +411,7 @@ const Layout = ({ children }) => {
           : isMobileMenuOpen
             ? 'translate-x-0'
             : '-translate-x-full lg:translate-x-0'
-      }`}>
+      } ${!shouldShowDesktopLayout ? 'pb-20 lg:pb-0' : ''}`}>
 
         <div className="flex flex-col h-full">
           {/* Emblem */}
