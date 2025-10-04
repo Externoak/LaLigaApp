@@ -640,10 +640,10 @@ function backupCurrentApp() {
                 if (isDirectory) {
                     fs.mkdirSync(dest, {recursive: true});
                     fs.readdirSync(src).forEach((childItemName) => {
-                        // Skip directories that could cause infinite recursion or are not needed
+                        // Skip only temp and backup directories to prevent infinite recursion
+                        // node_modules MUST be copied for the update to work
                         if (childItemName === 'temp' ||
                             childItemName === 'backup' ||
-                            childItemName === 'node_modules' ||
                             childItemName === '.git') {
                                                         return;
                         }
@@ -701,10 +701,10 @@ function replaceAppFiles(newAppPath) {
                         fs.mkdirSync(dest, {recursive: true});
                     }
                     fs.readdirSync(src).forEach((childItemName) => {
-                        // Skip directories that could cause conflicts or recursion
+                        // Skip only temp and backup directories to prevent conflicts or recursion
+                        // node_modules MUST be copied for the update to work
                         if (childItemName === 'temp' ||
                             childItemName === 'backup' ||
-                            childItemName === 'node_modules' ||
                             childItemName === '.git') {
                                                         return;
                         }
