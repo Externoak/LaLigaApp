@@ -599,17 +599,19 @@ const Layout = ({ children }) => {
         }`}>
           <div className="flex items-center justify-between px-4 lg:px-6 h-16">
 
-            {/* Mobile search button - Only on small screens */}
-            <button
-              onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-              className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            >
-              <Search className="w-5 h-5" />
-            </button>
+            {/* Mobile search button - Only on small screens when not in Electron */}
+            {!shouldShowDesktopLayout && (
+              <button
+                onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
+                className="sm:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              >
+                <Search className="w-5 h-5" />
+              </button>
+            )}
 
-            {/* Enhanced Search Bar - Hidden on small mobile, visible on larger screens */}
+            {/* Enhanced Search Bar - Always visible on desktop/Electron, hidden on mobile */}
             <div className="hidden sm:flex flex-1 max-w-4xl mx-2 md:mx-6" ref={searchRef}>
-              <div className="relative w-full overflow-hidden">
+              <div className="relative w-full">
                 {/* Search Container with Enhanced Design */}
                 <div className={`relative flex items-center bg-white dark:bg-dark-card rounded-xl border-2 transition-all duration-200 shadow-sm hover:shadow-md ${
                   showSearchResults || searchQuery 
@@ -617,10 +619,10 @@ const Layout = ({ children }) => {
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}>
                   {/* Search Icon */}
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 pointer-events-none">
                     <Search className={`w-5 h-5 transition-colors duration-200 ${
-                      showSearchResults || searchQuery 
-                        ? 'text-primary-500' 
+                      showSearchResults || searchQuery
+                        ? 'text-primary-500'
                         : 'text-gray-400 dark:text-gray-500'
                     }`} />
                   </div>
@@ -633,13 +635,13 @@ const Layout = ({ children }) => {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(sanitizeSearchTerm(e.target.value))}
                     onFocus={() => searchQuery.trim().length >= 2 && setShowSearchResults(true)}
-                    className={`w-full bg-transparent border-0 outline-none py-3.5 pl-12 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 font-medium transition-all duration-200 truncate ${
+                    className={`relative z-10 w-full bg-transparent border-0 outline-none py-3.5 pl-12 pr-12 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 font-medium transition-all duration-200 truncate ${
                       showSearchResults || searchQuery ? 'text-primary-900 dark:text-primary-100' : ''
                     }`}
                   />
 
                   {/* Loading Spinner or Clear Button */}
-                  <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10">
                     {isSearching ? (
                       <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
                     ) : searchQuery ? (
