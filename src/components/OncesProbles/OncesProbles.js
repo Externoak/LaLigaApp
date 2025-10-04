@@ -232,24 +232,24 @@ const OncesProbles = () => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white dark:bg-dark-card rounded-lg p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-primary-100 dark:bg-primary-900/20 rounded-lg">
-              <Clock className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+      <div className="bg-white dark:bg-dark-card rounded-lg p-4 sm:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2 sm:p-3 bg-primary-100 dark:bg-primary-900/20 rounded-lg flex-shrink-0">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-primary-600 dark:text-primary-400" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
                 Onces Probables
               </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-1">
+              <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
                 Alineaciones probables de los equipos de La Liga
               </p>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 justify-end sm:justify-start">
             <button
               onClick={handleRefresh}
               disabled={loading}

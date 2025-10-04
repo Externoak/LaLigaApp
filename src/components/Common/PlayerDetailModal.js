@@ -234,12 +234,12 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
       >
         <animated.div
           style={modalSpring}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full mx-4 max-w-4xl max-h-[90vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="relative bg-gradient-to-r from-primary-500 to-primary-600 px-6 py-8 text-white">
-            <div className="absolute top-4 right-4 flex gap-2">
+          <div className="relative bg-gradient-to-r from-primary-500 to-primary-600 px-4 md:px-6 py-6 md:py-8 text-white">
+            <div className="absolute top-3 md:top-4 right-3 md:right-4 flex gap-2">
               <QuickAlertButton
                 player={player}
                 alertType="clause_available"
@@ -251,11 +251,69 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
                 onClick={onClose}
                 className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5 md:w-6 md:h-6" />
               </button>
             </div>
 
-            <div className="flex items-center gap-6">
+            {/* Mobile Layout */}
+            <div className="md:hidden">
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center flex-shrink-0">
+                  {(playerData?.playerMaster?.images?.transparent?.['256x256'] ||
+                    player.matchedPlayer?.images?.transparent?.['256x256'] ||
+                    player.images?.transparent?.['256x256']) ? (
+                    <img
+                      src={playerData?.playerMaster?.images?.transparent?.['256x256'] ||
+                           player.matchedPlayer?.images?.transparent?.['256x256'] ||
+                           player.images?.transparent?.['256x256']}
+                      alt={playerData?.playerMaster?.nickname || player.matchedPlayer?.name || player.name}
+                      className="w-14 h-14 object-cover rounded-full"
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold">
+                      {playerData?.playerMaster?.nickname?.[0] ||
+                       player.matchedPlayer?.nickname?.[0] ||
+                       player?.name?.[0] || player?.nickname?.[0] || '?'}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0 pr-20">
+                  <h2 className="text-xl font-bold truncate">
+                    {playerData?.playerMaster?.nickname || playerData?.playerMaster?.name ||
+                     player.matchedPlayer?.nickname || player.matchedPlayer?.name ||
+                     player.name || player.nickname || 'Jugador'}
+                  </h2>
+                  <div className="flex items-center gap-2 text-primary-100 text-sm mt-1">
+                    <User className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">{playerData?.playerMaster?.position ||
+                           player.matchedPlayer?.position ||
+                           player.position || 'Posición'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Team and Next Opponent - Stacked on Mobile */}
+              <div className="space-y-2 text-sm">
+                {(playerData?.playerMaster?.team?.name || player.matchedPlayer?.team?.name || player.team?.name) && (
+                  <div className="flex items-center gap-2 text-primary-100">
+                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                    <span className="truncate">{playerData?.playerMaster?.team?.name ||
+                           player.matchedPlayer?.team?.name ||
+                           player.team?.name}</span>
+                  </div>
+                )}
+                {nextOpponent && (
+                  <div className="flex items-center gap-1 text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full w-fit">
+                    <span>J{nextOpponent.week} vs {nextOpponent.opponent}</span>
+                    <span className="opacity-75">({nextOpponent.isHome ? 'C' : 'F'})</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Desktop Layout */}
+            <div className="hidden md:flex items-center gap-6">
               <div className="w-20 h-20 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
                 {(playerData?.playerMaster?.images?.transparent?.['256x256'] ||
                   player.matchedPlayer?.images?.transparent?.['256x256'] ||

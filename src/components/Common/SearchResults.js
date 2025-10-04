@@ -33,7 +33,7 @@ const SearchResults = ({ results, query, isVisible, onClose }) => {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -10 }}
         transition={{ duration: 0.2 }}
-        className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto"
+        className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto min-w-[300px]"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-gray-100 dark:border-dark-border">

@@ -554,7 +554,7 @@ const Clauses = () => {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Filtros y Ordenación</h3>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4" style={{"gridTemplateColumns": "repeat(5, 1fr)"}}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           {/* Show All Toggle */}
           <div className="flex flex-col h-full" style={{minHeight: '160px'}}>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">

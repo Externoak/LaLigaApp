@@ -14,7 +14,7 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
 
   return (
     <div
-      className={`group relative ${isStarter ? 'w-28 h-32' : 'w-24 h-28'} cursor-pointer`}
+      className={`group relative ${isStarter ? 'w-20 h-24 sm:w-28 sm:h-32' : 'w-16 h-20 sm:w-24 sm:h-28'} cursor-pointer`}
       onClick={() => onPlayerClick && onPlayerClick(player)}
     >
       {/* Player Card */}
@@ -25,7 +25,7 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
       } ${isStarter ? 'p-2' : 'p-1.5'}`}>
 
         {/* Player Image */}
-        <div className={`${isStarter ? 'w-16 h-16' : 'w-14 h-14'} mx-auto mb-1 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden`}>
+        <div className={`${isStarter ? 'w-12 h-12 sm:w-16 sm:h-16' : 'w-10 h-10 sm:w-14 sm:h-14'} mx-auto mb-1 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden`}>
           {(player.playerMaster?.images?.transparent?.['256x256'] || player.images?.transparent?.['256x256']) ? (
             <img
               src={player.playerMaster?.images?.transparent?.['256x256'] || player.images?.transparent?.['256x256']}
@@ -45,7 +45,7 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
         </div>
 
         {/* Player Name */}
-        <div className={`text-center ${isStarter ? 'text-lg' : 'text-base'} font-medium text-gray-900 dark:text-gray-100 truncate`}>
+        <div className={`text-center ${isStarter ? 'text-xs sm:text-lg' : 'text-xs sm:text-base'} font-medium text-gray-900 dark:text-gray-100 truncate`}>
           {(() => {
             const displayName = player.playerMaster?.nickname || player.nickname || player.playerMaster?.name || player.name || 'Jugador';
             return displayName.length > 14 ? displayName.substring(0, 14) : displayName;
@@ -53,7 +53,7 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
         </div>
 
         {/* Probability Badge */}
-        <div className={`absolute -top-2 -right-2 ${isStarter ? 'w-12 h-12 text-lg' : 'w-10 h-10 text-base'} rounded-full font-bold flex items-center justify-center ${getProbabilityColor(player.probability)}`}>
+        <div className={`absolute -top-2 -right-2 ${isStarter ? 'w-8 h-8 text-xs sm:w-12 sm:h-12 sm:text-lg' : 'w-7 h-7 text-xs sm:w-10 sm:h-10 sm:text-base'} rounded-full font-bold flex items-center justify-center ${getProbabilityColor(player.probability)}`}>
           {player.probability}%
         </div>
 
@@ -108,7 +108,7 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
 const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], onPlayerClick }) => {
   if (loading) {
     return (
-      <div className="bg-gradient-to-b from-green-400 to-green-600 rounded-lg p-8 min-h-[600px] flex items-center justify-center">
+      <div className="bg-gradient-to-b from-green-400 to-green-600 rounded-lg p-4 sm:p-8 min-h-[400px] sm:min-h-[600px] flex items-center justify-center">
         <div className="text-center text-white">
           <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="font-medium">Cargando alineación...</p>
@@ -208,10 +208,11 @@ const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], on
   return (
     <div className="bg-white dark:bg-dark-card rounded-lg shadow-sm overflow-hidden">
       {/* Team Header */}
-      <div className="p-6 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-gray-200 dark:border-gray-700">
+      <div className="p-4 md:p-6 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-3 md:gap-4">
+            {/* Hide badge on mobile */}
+            <div className="hidden md:block w-16 h-16 rounded-full overflow-hidden border-2 border-gray-200 dark:border-gray-700">
               {lineupData.team.badgeColor ? (
                 <img
                   src={lineupData.team.badgeColor}
@@ -228,20 +229,20 @@ const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], on
                 </div>
               )}
             </div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg md:text-xl font-bold text-gray-900 dark:text-gray-100 truncate">
                 {lineupData.team.fullName}
               </h3>
-              <div className="flex flex-wrap items-center gap-3 mt-1">
-                <span className="text-sm text-gray-600 dark:text-gray-400">
+              <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1">
+                <span className="text-xs md:text-sm text-gray-600 dark:text-gray-400">
                   Formación: {actualFormation}
                 </span>
                 {(upcomingOpponents || []).slice(0, 2).map((match, index) => (
                   <span
                     key={`next-${match.week}-${match.opponent}-${index}`}
-                    className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full"
+                    className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 md:py-1 rounded-full truncate"
                   >
-                    J{match.week} - vs {match.opponent} ({match.isHome ? 'Casa' : 'Fuera'})
+                    J{match.week} - vs {match.opponent} ({match.isHome ? 'C' : 'F'})
                   </span>
                 ))}
               </div>
@@ -249,16 +250,16 @@ const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], on
           </div>
 
           {lineupData.coach && (
-            <div className="text-right">
+            <div className="text-left md:text-right">
               <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Entrenador</p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">{lineupData.coach.name}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 truncate">{lineupData.coach.name}</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Football Pitch */}
-      <div className="relative bg-gradient-to-b from-green-400 via-green-500 to-green-600 min-h-[500px] p-6">
+      <div className="relative bg-gradient-to-b from-green-400 via-green-500 to-green-600 min-h-[400px] sm:min-h-[500px] p-3 sm:p-6">
         {/* Pitch Lines */}
         <div className="absolute inset-4">
           {/* Outer border */}
@@ -281,24 +282,30 @@ const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], on
         </div>
 
         {/* Players Formation */}
-        <div className="relative z-10 h-full flex flex-col justify-between py-12">
+        <div className="relative z-10 h-full flex flex-col justify-between py-6 md:py-12">
 
           {/* Attackers */}
-          <div className="flex justify-center items-center mb-12" style={{ gap: attackerPlayers.length > 2 ? '8rem' : '16rem' }}>
+          <div className="flex justify-center items-center mb-6 md:mb-12 gap-2 sm:gap-8 md:gap-16" style={{
+            gap: attackerPlayers.length > 2 ? 'clamp(0.5rem, 3vw, 8rem)' : 'clamp(1rem, 5vw, 16rem)'
+          }}>
             {attackerPlayers.map((player) => (
               <PlayerCard key={player.id} player={player} onPlayerClick={onPlayerClick} />
             ))}
           </div>
 
           {/* Midfielders */}
-          <div className="flex justify-center items-center mb-12" style={{ gap: midfielderPlayers.length > 3 ? '8rem' : '16rem' }}>
+          <div className="flex justify-center items-center mb-6 md:mb-12 gap-2 sm:gap-8 md:gap-16" style={{
+            gap: midfielderPlayers.length > 3 ? 'clamp(0.5rem, 3vw, 8rem)' : 'clamp(1rem, 5vw, 16rem)'
+          }}>
             {midfielderPlayers.map((player) => (
               <PlayerCard key={player.id} player={player} onPlayerClick={onPlayerClick} />
             ))}
           </div>
 
           {/* Defenders */}
-          <div className="flex justify-center items-center mb-12" style={{ gap: defenderPlayers.length > 3 ? '8rem' : '16rem' }}>
+          <div className="flex justify-center items-center mb-6 md:mb-12 gap-2 sm:gap-8 md:gap-16" style={{
+            gap: defenderPlayers.length > 3 ? 'clamp(0.5rem, 3vw, 8rem)' : 'clamp(1rem, 5vw, 16rem)'
+          }}>
             {defenderPlayers.map((player) => (
               <PlayerCard key={player.id} player={player} onPlayerClick={onPlayerClick} />
             ))}

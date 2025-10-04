@@ -426,13 +426,21 @@ export const fantasyAPI = {
 
   // Estadísticas de partidos - usar proxy con autenticación
   getMatchStats: async (weekNumber) => {
-
     try {
-        // Use regular axios proxy
-        const proxyBaseUrl = process.env.NODE_ENV === 'development'
-          ? 'http://localhost:3005'  // Proxy local
-          : 'https://api-fantasy.llt-services.com';
-
+        // Determine base URL based on environment
+        let baseUrl;
+        if (isElectron) {
+          // Electron uses the proxy server on localhost
+          baseUrl = 'http://localhost:3005';
+        } else if (isDev) {
+          // Web dev mode: use the same host as the current page with proxy port
+          const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+          const host = window.location.hostname || 'localhost';
+          baseUrl = `${protocol}//${host}:3005`;
+        } else {
+          // Production: use current origin (assumes proxy is on same server)
+          baseUrl = window.location.origin;
+        }
 
         // Get current auth token
         const authStore = useAuthStore.getState();
@@ -451,7 +459,7 @@ export const fantasyAPI = {
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), 10000);
         try {
-          const r = await fetch(`${proxyBaseUrl}/stats/v1/stats/week/${weekNumber}?x-lang=es`, {
+          const r = await fetch(`${baseUrl}/stats/v1/stats/week/${weekNumber}?x-lang=es`, {
             method: 'GET',
             headers,
             signal: controller.signal,

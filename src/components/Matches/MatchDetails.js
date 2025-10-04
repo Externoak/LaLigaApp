@@ -72,7 +72,56 @@ const MatchDetails = ({ matchId, weekNumber, onClose, isOpen }) => {
         className="bg-gradient-to-r from-white to-gray-50 dark:from-dark-card dark:to-gray-800 rounded-xl p-4 border border-gray-200 dark:border-dark-border hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer"
         onClick={() => handlePlayerClick(player)}
       >
-        <div className="flex items-center gap-4">
+        {/* Mobile Layout */}
+        <div className="md:hidden">
+          <div className="flex items-start gap-3">
+            {/* Player Image */}
+            <div className="relative flex-shrink-0">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 p-1 shadow-inner">
+                <img
+                  src={playerImage}
+                  alt={playerName}
+                  className="w-full h-full rounded-lg object-cover"
+                  onError={(e) => {
+                    e.target.src = 'https://assets-fantasy.llt-services.com/players/no-player/no-player-sq_128.png';
+                  }}
+                />
+              </div>
+              {playerPoints > 10 && (
+                <div className="absolute -top-1 -right-1 bg-yellow-500 rounded-full p-0.5 shadow-lg">
+                  <Star className="w-2.5 h-2.5 text-white fill-current" />
+                </div>
+              )}
+            </div>
+
+            {/* Player Info and Points */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm truncate">
+                  {playerName}
+                </h3>
+                <div className={`text-xl font-bold flex-shrink-0 ${
+                  playerPoints > 10 ? 'text-green-600 dark:text-green-400' :
+                  playerPoints > 5 ? 'text-blue-600 dark:text-blue-400' :
+                  playerPoints > 0 ? 'text-gray-600 dark:text-gray-300' : 'text-red-500 dark:text-red-400'
+                }`}>
+                  {playerPoints}
+                </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                  {playerName !== playerFullName ? playerFullName : positionNames[playerPosition] || 'Jugador'}
+                </p>
+                <span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${positionColors[playerPosition] || 'bg-gray-100 text-gray-800 border-gray-200'} shadow-sm flex-shrink-0`}>
+                  {positionNames[playerPosition] || 'N/A'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop Layout */}
+        <div className="hidden md:flex items-center gap-4">
           {/* Player Image */}
           <div className="relative">
             <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 p-1 shadow-inner">
@@ -112,8 +161,8 @@ const MatchDetails = ({ matchId, weekNumber, onClose, isOpen }) => {
           {/* Points */}
           <div className="text-right">
             <div className={`text-2xl font-bold ${
-              playerPoints > 10 ? 'text-green-600 dark:text-green-400' : 
-              playerPoints > 5 ? 'text-blue-600 dark:text-blue-400' : 
+              playerPoints > 10 ? 'text-green-600 dark:text-green-400' :
+              playerPoints > 5 ? 'text-blue-600 dark:text-blue-400' :
               playerPoints > 0 ? 'text-gray-600 dark:text-gray-300' : 'text-red-500 dark:text-red-400'
             }`}>
               {playerPoints}
@@ -150,8 +199,63 @@ const MatchDetails = ({ matchId, weekNumber, onClose, isOpen }) => {
 
     return (
       <div className="space-y-6">
-        {/* Team Header */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20 rounded-2xl p-6 border border-primary-200 dark:border-primary-700/50">
+        {/* Team Header - Mobile */}
+        <div className="md:hidden relative overflow-hidden bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20 rounded-2xl p-4 border border-primary-200 dark:border-primary-700/50">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary-200/30 to-transparent rounded-full transform translate-x-16 -translate-y-16" />
+
+          <div className="relative space-y-3">
+            {/* Team Badge and Name */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-xl p-2 shadow-lg flex-shrink-0">
+                <img
+                  src={teamBadge}
+                  alt={teamName}
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiNGM0Y0RjYiLz4KPHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxNiIgeT0iMTYiPgo8cGF0aCBkPSJNMTYgNEMxNC45IDQgMTQgNC45IDE0IDZWOEgxMFY2QzEwIDQuOSA5LjEgNCA4IDRTNiA0LjkgNiA2VjhINCU4IiBmaWxsPSIjOUNBM0FGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
+                  }}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 truncate">
+                  {teamName}
+                </h3>
+                <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">
+                  {title}
+                </p>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="text-2xl font-bold text-primary-600 dark:text-primary-400">
+                  {totalPoints}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                  PUNTOS
+                </div>
+              </div>
+            </div>
+
+            {/* Stats Row */}
+            <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-gray-600 dark:text-gray-300">
+                  {sortedPlayers.length} jugadores
+                </span>
+              </div>
+              {bestPlayer && (
+                <div className="flex items-center gap-1 flex-1 min-w-0">
+                  <Star className="w-3.5 h-3.5 text-yellow-500 fill-current flex-shrink-0" />
+                  <span className="text-gray-600 dark:text-gray-300 truncate">
+                    {bestPlayer?.nickname || bestPlayer?.name || 'Jugador'} ({Number(bestPlayer?.weekPoints) || 0}pts)
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Team Header - Desktop */}
+        <div className="hidden md:block relative overflow-hidden bg-gradient-to-br from-primary-50 to-primary-100 dark:from-primary-900/20 dark:to-primary-800/20 rounded-2xl p-6 border border-primary-200 dark:border-primary-700/50">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-primary-200/30 to-transparent rounded-full transform translate-x-16 -translate-y-16" />
 
           <div className="relative flex items-center gap-4">
@@ -279,8 +383,94 @@ const MatchDetails = ({ matchId, weekNumber, onClose, isOpen }) => {
 
               {matchData && (
                 <div className="space-y-8">
-                  {/* Match Info */}
-                  <div className="text-center">
+                  {/* Match Info - Mobile */}
+                  <div className="md:hidden text-center">
+                    <div className="bg-white dark:bg-dark-card rounded-2xl p-4 shadow-lg border border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center justify-between gap-3 mb-4">
+                        {/* Local Team */}
+                        <motion.div
+                          initial={{ opacity: 0, x: -50 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="flex flex-col items-center flex-1"
+                        >
+                          <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-xl p-2 shadow-lg mb-2">
+                            <img
+                              src={matchData?.local?.badgeColor || matchData?.local?.badge}
+                              alt={matchData?.local?.mainName || matchData?.local?.name || 'Equipo Local'}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiNGM0Y0RjYiLz4KPHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxNiIgeT0iMTYiPgo8cGF0aCBkPSJNMTYgNEMxNC45IDQgMTQgNC45IDE0IDZWOEgxMFY2QzEwIDQuOSA5LjEgNCA4IDRTNiA0LjkgNiA2VjhINCU4IiBmaWxsPSIjOUNBM0FGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
+                              }}
+                            />
+                          </div>
+                          <h3 className="font-bold text-xs text-gray-900 dark:text-gray-100 text-center line-clamp-2">
+                            {matchData?.local?.mainName || matchData?.local?.name || 'Equipo Local'}
+                          </h3>
+                        </motion.div>
+
+                        {/* VS and Score */}
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.5 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="flex flex-col items-center flex-shrink-0"
+                        >
+                          {matchData.localScore !== null && matchData.visitorScore !== null ? (
+                            <div className="bg-gradient-to-r from-primary-400 to-primary-500 text-white rounded-xl px-4 py-3 shadow-lg">
+                              <div className="text-2xl font-bold">
+                                {matchData.localScore} - {matchData.visitorScore}
+                              </div>
+                              <div className="text-xs opacity-90 text-center">
+                                FINAL
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl px-4 py-3">
+                              <div className="text-xl font-bold">VS</div>
+                              <div className="text-xs text-center">
+                                POR JUGAR
+                              </div>
+                            </div>
+                          )}
+                        </motion.div>
+
+                        {/* Visitor Team */}
+                        <motion.div
+                          initial={{ opacity: 0, x: 50 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className="flex flex-col items-center flex-1"
+                        >
+                          <div className="w-14 h-14 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-xl p-2 shadow-lg mb-2">
+                            <img
+                              src={matchData?.visitor?.badgeColor || matchData?.visitor?.badge}
+                              alt={matchData?.visitor?.mainName || matchData?.visitor?.name || 'Equipo Visitante'}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiNGM0Y0RjYiLz4KPHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxNiIgeT0iMTYiPgo8cGF0aCBkPSJNMTYgNEMxNC45IDQgMTQgNC45IDE0IDZWOEgxMFY2QzEwIDQuOSA5LjEgNCA4IDRTNiA0LjkgNiA2VjhINCU4IiBmaWxsPSIjOUNBM0FGIi8+Cjwvc3ZnPgo8L3N2Zz4K';
+                              }}
+                            />
+                          </div>
+                          <h3 className="font-bold text-xs text-gray-900 dark:text-gray-100 text-center line-clamp-2">
+                            {matchData?.visitor?.mainName || matchData?.visitor?.name || 'Equipo Visitante'}
+                          </h3>
+                        </motion.div>
+                      </div>
+
+                      <div className="text-center pt-3 border-t border-gray-200 dark:border-gray-700">
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          {new Date(matchData.date).toLocaleDateString('es-ES', {
+                            weekday: 'long',
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Match Info - Desktop */}
+                  <div className="hidden md:block text-center">
                     <div className="bg-white dark:bg-dark-card rounded-2xl p-8 shadow-lg border border-gray-200 dark:border-gray-700">
                       <div className="flex items-center justify-center gap-8 mb-6">
                         {/* Local Team */}

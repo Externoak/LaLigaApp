@@ -850,9 +850,87 @@ const Activity = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.02 }}
-            className="p-6 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            className="p-4 md:p-6 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
           >
-            <div className="flex items-start gap-4">
+            {/* Mobile Layout */}
+            <div className="md:hidden">
+              <div className="flex flex-col gap-3">
+                {/* Header with Icon and Amount */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {/* Activity Type Icon */}
+                    <div className={`p-2 rounded-full ${getActivityColor(item.activityTypeId, item)} shadow-sm`}>
+                      {getActivityIcon(item.activityTypeId, item)}
+                    </div>
+                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${getActivityColor(item.activityTypeId, item)}`}>
+                      {getDisplayActivityType(item)}
+                    </div>
+                  </div>
+
+                  {/* Amount Badge */}
+                  {item.amount && item.activityTypeId !== 7 && (
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      (item.activityTypeId === 1 || item.activityTypeId === 31 || item.activityTypeId === 32 ||
+                       (item.activityTypeId === 1 && getActivityText(item) === 'clausuló'))
+                      ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                      : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                    }`}>
+                      {(item.activityTypeId === 1 || item.activityTypeId === 31 || item.activityTypeId === 32 ||
+                        (item.activityTypeId === 1 && getActivityText(item) === 'clausuló'))
+                      ? `-${formatCurrency(Math.abs(item.amount))}`
+                      : `+${formatCurrency(Math.abs(item.amount))}`}
+                    </span>
+                  )}
+                </div>
+
+                {/* Activity Description */}
+                <div className="flex items-start gap-3">
+                  {/* Player Image */}
+                  {item.amount && !item.playerMasterId && !item.playerName && !item.player ? (
+                    <div className="w-12 h-12 rounded-full border-2 border-green-200 dark:border-green-700 bg-green-100 dark:bg-green-800 flex items-center justify-center flex-shrink-0">
+                      <Euro className="w-6 h-6 text-green-600 dark:text-green-400" />
+                    </div>
+                  ) : item.activityTypeId === 7 ? (
+                    <div className="w-12 h-12 rounded-full border-2 border-red-200 dark:border-red-700 bg-red-100 dark:bg-red-800 flex items-center justify-center flex-shrink-0">
+                      <Calendar className="w-6 h-6 text-red-600 dark:text-red-400" />
+                    </div>
+                  ) : getPlayerImage(item) ? (
+                    <div className="w-12 h-12 rounded-full border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white shadow-md flex-shrink-0">
+                      <img
+                        src={getPlayerImage(item)}
+                        alt={getPlayerName(item)}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.parentNode.innerHTML = `<div class="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-base font-semibold">${getPlayerName(item).charAt(0).toUpperCase()}</div>`;
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 rounded-full border-2 border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                      <span className="text-gray-500 dark:text-gray-400 text-lg font-semibold">
+                        {getPlayerName(item).charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base font-medium text-gray-900 dark:text-white">
+                      {getFullActivityDescription(item)}
+                    </p>
+                    <div className="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{timeAgo(item.createdAt || item.timestamp)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Desktop Layout */}
+            <div className="hidden md:flex items-start gap-4">
               {/* Player Image or Activity Icon */}
               <div className="flex-shrink-0">
                 {item.amount && !item.playerMasterId && !item.playerName && !item.player ? (
@@ -904,8 +982,8 @@ const Activity = () => {
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                         // For purchases (1), signings (31), and clauses (32): show as expense (red/negative)
                         // For sales (33) and earnings: show as income (green/positive)
-                        (item.activityTypeId === 1 || item.activityTypeId === 31 || item.activityTypeId === 32 || 
-                         (item.activityTypeId === 1 && getActivityText(item) === 'clausuló')) 
+                        (item.activityTypeId === 1 || item.activityTypeId === 31 || item.activityTypeId === 32 ||
+                         (item.activityTypeId === 1 && getActivityText(item) === 'clausuló'))
                         ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                         : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                       }`}>

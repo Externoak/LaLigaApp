@@ -19,6 +19,10 @@ const UpcomingMatches = ({ matches }) => {
     return match.matchState === 2 || match.matchState === 4;
   };
 
+  const isMatchFinished = (match) => {
+    return match.matchState === 7;
+  };
+
   const getMatchStatus = (match) => {
     if (match.matchState === 7) {
       return 'Finalizado';
@@ -31,20 +35,22 @@ const UpcomingMatches = ({ matches }) => {
     }
   };
 
-  // Sort matches: live matches first, then by date (earliest first)
-  const sortedMatches = [...matchesData].sort((a, b) => {
-    const aIsLive = isMatchLive(a);
-    const bIsLive = isMatchLive(b);
+  // Filter out finished matches, then sort: live matches first, then by date (earliest first)
+  const sortedMatches = [...matchesData]
+    .filter(match => !isMatchFinished(match)) // Exclude finished matches
+    .sort((a, b) => {
+      const aIsLive = isMatchLive(a);
+      const bIsLive = isMatchLive(b);
 
-    // Live matches first
-    if (aIsLive && !bIsLive) return -1;
-    if (!aIsLive && bIsLive) return 1;
+      // Live matches first
+      if (aIsLive && !bIsLive) return -1;
+      if (!aIsLive && bIsLive) return 1;
 
-    // Then sort by date (earliest first)
-    const dateA = new Date(a.matchDate || a.date || 0);
-    const dateB = new Date(b.matchDate || b.date || 0);
-    return dateA - dateB;
-  });
+      // Then sort by date (earliest first)
+      const dateA = new Date(a.matchDate || a.date || 0);
+      const dateB = new Date(b.matchDate || b.date || 0);
+      return dateA - dateB;
+    });
 
   // Take only the first 5 matches for the dashboard
   const upcomingMatches = sortedMatches.slice(0, 5);
@@ -95,7 +101,77 @@ const UpcomingMatches = ({ matches }) => {
                   : 'bg-gray-50 dark:bg-gray-800/50'
               }`}
             >
-              <div className="flex flex-col gap-4 w-full">
+              {/* Live badge for mobile */}
+              {getMatchStatus(match) && (
+                <div className="mb-3 md:hidden">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-bold text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 rounded-full">
+                    {getMatchStatus(match)}
+                  </span>
+                </div>
+              )}
+
+              {/* Mobile Layout */}
+              <div className="flex flex-col md:hidden">
+                {/* Teams - Vertical on mobile */}
+                <div className="flex-1 space-y-3">
+                  {/* Home Team */}
+                  <div className="flex items-center gap-3">
+                    {getTeamShield(match.local) && (
+                      <img
+                        src={getTeamShield(match.local)}
+                        alt={getTeamName(match.local)}
+                        className="w-10 h-10 object-contain flex-shrink-0"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    )}
+                    <span className="font-semibold text-gray-900 dark:text-white text-base flex-1">
+                      {getTeamName(match.local)}
+                    </span>
+                  </div>
+
+                  {/* Score/VS - Centered */}
+                  <div className="flex items-center justify-center">
+                    <span className="text-gray-900 dark:text-white text-2xl font-bold px-4 py-2 bg-white dark:bg-gray-700 rounded-lg">
+                      {match.localScore !== null && match.visitorScore !== null
+                        ? `${match.localScore} - ${match.visitorScore}`
+                        : 'vs'
+                      }
+                    </span>
+                  </div>
+
+                  {/* Away Team */}
+                  <div className="flex items-center gap-3">
+                    {getTeamShield(match.visitor) && (
+                      <img
+                        src={getTeamShield(match.visitor)}
+                        alt={getTeamName(match.visitor)}
+                        className="w-10 h-10 object-contain flex-shrink-0"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    )}
+                    <span className="font-semibold text-gray-900 dark:text-white text-base flex-1">
+                      {getTeamName(match.visitor)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Match Info */}
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-xs">{formatMatchDate(match.matchDate || match.date || match.kickoff)}</span>
+                  </div>
+                  {match.venue && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 flex-shrink-0" />
+                      <span className="text-xs truncate">{match.venue}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Desktop/Electron Layout */}
+              <div className="hidden md:flex md:flex-col md:gap-4 w-full">
                 {/* Teams */}
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap md:flex-nowrap sm:items-center sm:gap-4 md:flex-1">
                   <div className="flex items-center gap-2 min-w-0 sm:flex-1">
