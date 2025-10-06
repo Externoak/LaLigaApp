@@ -233,6 +233,12 @@ const createFantasyProxy = (config) => {
     }
     proxyRes.headers['access-control-allow-credentials'] = 'true';
     res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+    // Add cache headers to allow React Query to cache responses
+    // This prevents excessive API calls that cause 429 errors
+    if (!proxyRes.headers['cache-control']) {
+      res.setHeader('Cache-Control', 'private, max-age=300'); // 5 minutes
+    }
   };
 
   const handleError = (err, req, res) => {
@@ -266,10 +272,8 @@ const buildMarketHandler = (config) => {
   const marketHeaders = {
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
-    'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
     DNT: '1',
-    Pragma: 'no-cache',
     'Upgrade-Insecure-Requests': '1',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   };
@@ -309,6 +313,7 @@ const buildMarketHandler = (config) => {
         res.setHeader('Vary', 'Origin');
       }
       res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Cache-Control', 'private, max-age=600'); // 10 minutes - market data changes slowly
 
       res.json({
         html: response.data,
@@ -385,10 +390,8 @@ const buildLineupHandler = (config) => {
   const lineupHeaders = {
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'es-ES,es;q=0.8,en-US;q=0.5,en;q=0.3',
-    'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
     DNT: '1',
-    Pragma: 'no-cache',
     'Upgrade-Insecure-Requests': '1',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
   };
@@ -429,6 +432,7 @@ const buildLineupHandler = (config) => {
         res.setHeader('Vary', 'Origin');
       }
       res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Cache-Control', 'private, max-age=900'); // 15 minutes - probable lineups don't change often
 
       res.json({
         html: response.data,

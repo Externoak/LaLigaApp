@@ -9,7 +9,16 @@ const ApiStatus = () => {
   const [hasChecked, setHasChecked] = useState(false);
 
   useEffect(() => {
-    checkApiStatus();
+    // Only check API status once per session to avoid 429 errors
+    const hasCheckedSession = sessionStorage.getItem('api_status_checked');
+    if (!hasCheckedSession) {
+      checkApiStatus();
+      sessionStorage.setItem('api_status_checked', 'true');
+    } else {
+      // Assume API is online if already checked this session
+      setApiStatus('online');
+      setHasChecked(true);
+    }
   }, []);
 
   const checkApiStatus = async () => {

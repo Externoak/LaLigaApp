@@ -5,6 +5,7 @@ import { Users, Calendar, ArrowLeft, ArrowRight, RefreshCw, User, Target, Chevro
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
+import { useCurrentWeek } from '../../hooks/useCurrentWeek';
 
 const Lineup = ({ teamId: propTeamId }) => {
   const { teamId: urlTeamId } = useParams();
@@ -24,16 +25,17 @@ const Lineup = ({ teamId: propTeamId }) => {
 
   const { leagueId, user } = useAuthStore();
 
-  const fetchCurrentWeek = useCallback(async () => {
-    try {
-      const response = await fantasyAPI.getCurrentWeek();
-      const week = response.data?.weekNumber || 1;
+  // Use shared hook for current week
+  const { data: currentWeekData } = useCurrentWeek();
+
+  // Update selected week when current week data is available
+  useEffect(() => {
+    if (currentWeekData && !selectedWeek) {
+      const week = currentWeekData.data?.weekNumber || currentWeekData.weekNumber || 1;
       setCurrentWeek(week);
       setSelectedWeek(week);
-    } catch (error) {
-      setSelectedWeek(1);
     }
-  }, []);
+  }, [currentWeekData, selectedWeek]);
 
   const fetchLeagueTeams = useCallback(async () => {
     try {
@@ -72,6 +74,12 @@ const Lineup = ({ teamId: propTeamId }) => {
   }, [leagueId, user, selectedTeamId]);
 
   const fetchLineupData = useCallback(async () => {
+    // Validación adicional para evitar llamadas con null
+    if (!selectedTeamId || !selectedWeek || !leagueId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -166,14 +174,13 @@ const Lineup = ({ teamId: propTeamId }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedTeamId, selectedWeek]);
+  }, [selectedTeamId, selectedWeek, leagueId]);
 
   useEffect(() => {
     if (leagueId) {
-      fetchCurrentWeek();
       fetchLeagueTeams();
     }
-  }, [leagueId, fetchCurrentWeek, fetchLeagueTeams]);
+  }, [leagueId, fetchLeagueTeams]);
 
   useEffect(() => {
     if (selectedTeamId && selectedWeek !== null && leagueId) {

@@ -17,6 +17,8 @@ const Matches = () => {
     queryKey: ['currentWeek'],
     queryFn: () => fantasyAPI.getCurrentWeek(),
     retry: false,
+    staleTime: 30 * 60 * 1000, // 30 minutos - la jornada actual no cambia frecuentemente
+    gcTime: 60 * 60 * 1000, // 1 hora en caché
   });
 
   // Set default week when current week is loaded
@@ -33,6 +35,8 @@ const Matches = () => {
     queryFn: () => fantasyAPI.getMatchday(selectedWeek),
     enabled: !!selectedWeek,
     retry: false,
+    staleTime: 1 * 60 * 1000, // 1 minuto - resultados pueden actualizarse durante partidos
+    gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
   if (isLoading) return <LoadingSpinner fullScreen={true} />;

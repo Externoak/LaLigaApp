@@ -263,13 +263,13 @@ async function ensureUnifiedServer() {
             if (candidate === 0 || error?.code !== 'EADDRINUSE') {
                 throw error;
             }
-            console.warn(`Port ${candidate} is in use, retrying with a dynamic port.`);
+            console.warn(`Puerto ${candidate} está en uso, reintentando con un puerto dinámico.`);
             unifiedServerInstance = null;
             serverAccessInfo = { host: null, port: null, urls: [] };
         }
     }
 
-    throw lastError || new Error('Failed to start unified server');
+    throw lastError || new Error('Error al iniciar el servidor unificado');
 }
 
 async function stopUnifiedServer() {
@@ -277,7 +277,7 @@ async function stopUnifiedServer() {
         try {
             await unifiedServerInstance.close();
         } catch (error) {
-            console.error('Failed to stop unified server:', error);
+            console.error('Error al detener el servidor unificado:', error);
         }
     }
     unifiedServerInstance = null;
@@ -382,16 +382,16 @@ function downloadFile(url, destinationPath, onProgress) {
 
                         if (bypassUrl) {
 
-                            // Retry download with bypass URL
+                            // Reintentar descarga con URL de bypass
                             return downloadFile(bypassUrl, destinationPath, onProgress)
                                 .then(resolve)
                                 .catch(reject);
                         } else {
-                            reject(new Error('Failed to parse Google Drive virus scan bypass URL - no valid method found'));
+                            reject(new Error('Error al analizar la URL de bypass de escaneo de virus de Google Drive - no se encontró un método válido'));
                             return;
                         }
                     } catch (parseError) {
-                        reject(new Error(`Failed to bypass Google Drive virus scan: ${parseError.message}`));
+                        reject(new Error(`Error al eludir el escaneo de virus de Google Drive: ${parseError.message}`));
                         return;
                     }
                 }
@@ -403,7 +403,7 @@ function downloadFile(url, destinationPath, onProgress) {
                     const stats = fs.statSync(destinationPath);
                     if (stats.size === 0) {
                         fs.unlinkSync(destinationPath);
-                        reject(new Error('Downloaded file is empty'));
+                        reject(new Error('El archivo descargado está vacío'));
                         return;
                     }
 
@@ -423,7 +423,7 @@ function downloadFile(url, destinationPath, onProgress) {
 
                             if (!validSignatures.includes(signature)) {
                                 fs.unlinkSync(destinationPath);
-                                reject(new Error('Downloaded file is not a valid zip file'));
+                                reject(new Error('El archivo descargado no es un archivo zip válido'));
                                 return;
                             }
                         } catch (validationError) {
@@ -460,7 +460,7 @@ function downloadFile(url, destinationPath, onProgress) {
             file.destroy();
             fs.unlink(destinationPath, () => {
             });
-            reject(new Error('Download timeout'));
+            reject(new Error('Tiempo de descarga agotado'));
         });
     });
 }
@@ -471,12 +471,12 @@ function extractZipFile(zipPath, extractPath) {
 
             // Validate zip file exists and has content
             if (!fs.existsSync(zipPath)) {
-                throw new Error(`Zip file does not exist: ${zipPath}`);
+                throw new Error(`El archivo zip no existe: ${zipPath}`);
             }
 
             const stats = fs.statSync(zipPath);
             if (stats.size === 0) {
-                throw new Error(`Zip file is empty: ${zipPath}`);
+                throw new Error(`El archivo zip está vacío: ${zipPath}`);
             }
 
 
@@ -507,11 +507,11 @@ function extractZipFile(zipPath, extractPath) {
             // Check if this might be HTML content instead of a zip
             const headerText = headerBuffer.toString('ascii').toLowerCase();
             if (headerText.includes('<html') || headerText.includes('<!doctype')) {
-                throw new Error('Downloaded file appears to be HTML content instead of a zip file. Google Drive may have returned an error page.');
+                throw new Error('El archivo descargado parece ser contenido HTML en lugar de un archivo zip. Google Drive puede haber devuelto una página de error.');
             }
 
             if (!validSignatures.includes(signature)) {
-                throw new Error(`Invalid zip file format. File signature: 0x${signature.toString(16).padStart(8, '0')} (expected PK signature)`);
+                throw new Error(`Formato de archivo zip inválido. Firma del archivo: 0x${signature.toString(16).padStart(8, '0')} (se esperaba firma PK)`);
             }
 
 
@@ -528,9 +528,9 @@ function extractZipFile(zipPath, extractPath) {
                 // Check if it's an HTML file (Google Drive error page)
                 const fileStart = fileBuffer.toString('utf8', 0, 200);
                 if (fileStart.includes('<html') || fileStart.includes('<!DOCTYPE') || fileStart.includes('Google Drive')) {
-                    throw new Error('Downloaded file is an HTML page instead of a ZIP file. The download from Google Drive failed.');
+                    throw new Error('El archivo descargado es una página HTML en lugar de un archivo ZIP. La descarga de Google Drive falló.');
                 } else {
-                    throw new Error(`Downloaded file is not a valid ZIP file. File signature: 0x${zipSignature.toString(16)}`);
+                    throw new Error(`El archivo descargado no es un archivo ZIP válido. Firma del archivo: 0x${zipSignature.toString(16)}`);
                 }
             }
 
@@ -539,18 +539,18 @@ function extractZipFile(zipPath, extractPath) {
             try {
                 zip = new AdmZip(zipPath);
             } catch (admError) {
-                                throw new Error(`Failed to read zip file: ADM-ZIP: ${admError.message}. The zip file may be corrupted or invalid.`);
+                                throw new Error(`Error al leer el archivo zip: ADM-ZIP: ${admError.message}. El archivo zip puede estar corrupto o ser inválido.`);
             }
 
             let entries;
             try {
                 entries = zip.getEntries();
             } catch (entriesError) {
-                throw new Error(`Failed to read zip entries: ${entriesError.message}. The zip file may be corrupted.`);
+                throw new Error(`Error al leer las entradas del zip: ${entriesError.message}. El archivo zip puede estar corrupto.`);
             }
 
             if (!entries || entries.length === 0) {
-                throw new Error('Zip file contains no entries or is corrupted');
+                throw new Error('El archivo zip no contiene entradas o está corrupto');
             }
 
 
@@ -565,7 +565,7 @@ function extractZipFile(zipPath, extractPath) {
                 // Check for path traversal attacks
                 const normalizedPath = path.normalize(entry.entryName);
                 if (normalizedPath.includes('..') || path.isAbsolute(normalizedPath)) {
-                    throw new Error(`Unsafe entry path detected: ${entry.entryName}`);
+                    throw new Error(`Ruta de entrada no segura detectada: ${entry.entryName}`);
                 }
             }
 
@@ -1121,7 +1121,7 @@ ipcMain.handle('check-for-updates', async () => {
         return {
             success: true,
             updateAvailable: false,
-            message: 'Update check completed via Electron IPC'
+            message: 'Comprobación de actualización completada'
         };
     } catch (error) {
         console.error('❌ IPC: Update check failed:', error);
@@ -1161,7 +1161,7 @@ ipcMain.handle('download-and-install-update', async (event, updateData) => {
                             progress: progress,
                             downloaded: downloaded,
                             total: total,
-                            message: `Downloading... ${progress}% (attempt ${retryAttempt}/${maxDownloadRetries})`
+                            message: `Descargando... ${progress}% (Intento ${retryAttempt}/${maxDownloadRetries})`
                         });
                     }
                 });
@@ -1190,7 +1190,7 @@ ipcMain.handle('download-and-install-update', async (event, updateData) => {
 
         // Check final result after all attempts
         if (!downloadResult || !downloadResult.success) {
-            throw new Error(`Download failed after ${maxDownloadRetries} attempts. Last error: ${downloadError || 'Unknown error'}`);
+            throw new Error(`Descarga fallida después de ${maxDownloadRetries} intentos. Último error: ${downloadError || 'Error desconocido'}`);
         }
 
 
@@ -1270,7 +1270,7 @@ ipcMain.handle('download-and-install-update', async (event, updateData) => {
 
         // Check final result after all Extracción attempts
         if (!extractResult || !extractResult.success) {
-            throw new Error(`Extracción failed after ${maxExtractionRetries} attempts. Last error: ${lastExtractionError || 'Unknown error'}`);
+            throw new Error(`Extracción fallida después de ${maxExtractionRetries} intentos. Último error: ${lastExtractionError || 'Error desconocido'}`);
         }
 
 
@@ -1286,7 +1286,7 @@ ipcMain.handle('download-and-install-update', async (event, updateData) => {
         const backupResult = await backupCurrentApp();
 
         if (!backupResult.success) {
-            throw new Error(`Backup failed: ${backupResult.error || 'Unknown error'}`);
+            throw new Error(`Copia de seguridad fallida: ${backupResult.error || 'Error desconocido'}`);
         }
 
 
@@ -1315,7 +1315,7 @@ ipcMain.handle('download-and-install-update', async (event, updateData) => {
         const replaceResult = await replaceAppFiles(sourceAppPath);
 
         if (!replaceResult.success) {
-            throw new Error(`File replacement failed: ${replaceResult.error || 'Unknown error'}`);
+            throw new Error(`Reemplazo de archivos fallido: ${replaceResult.error || 'Error desconocido'}`);
         }
 
 
@@ -1384,7 +1384,7 @@ ipcMain.handle('download-and-install-update', async (event, updateData) => {
             mainWindow.webContents.send('update-progress', {
                 step: 'error',
                 progress: 0,
-                message: `Update failed: ${error.message}`,
+                message: `Actualización fallida: ${error.message}`,
                 error: error.message
             });
         }
@@ -1407,7 +1407,7 @@ ipcMain.handle('restart-app', async () => {
 
         return {
             success: true,
-            message: 'Application will restart in 1 second'
+            message: 'La aplicación se reiniciará en 1 segundo'
         };
     } catch (error) {
         console.error('❌ IPC: Restart failed:', error);
@@ -1463,24 +1463,24 @@ ipcMain.handle('download-update', async (event, options) => {
     // You can implement separate download logic here if needed
     return {
         success: false,
-        error: 'Individual download not implemented, use downloadAndInstallUpdate instead'
+        error: 'Descarga individual no implementada, use downloadAndInstallUpdate en su lugar'
     };
 });
 
 ipcMain.handle('extract-update', async (event, options) => {
-        return { success: false, error: 'Individual Extracción not implemented' };
+        return { success: false, error: 'Extracción individual no implementada' };
 });
 
 ipcMain.handle('validate-update', async (event, options) => {
-        return { success: false, error: 'Individual validation not implemented' };
+        return { success: false, error: 'Validación individual no implementada' };
 });
 
 ipcMain.handle('replace-app', async (event, options) => {
-        return { success: false, error: 'Individual app replacement not implemented' };
+        return { success: false, error: 'Reemplazo de aplicación individual no implementado' };
 });
 
 ipcMain.handle('rollback-update', async (event) => {
-        return { success: false, error: 'Rollback not implemented' };
+        return { success: false, error: 'Reversión no implementada' };
 });
 
 // Token persistence IPC handlers

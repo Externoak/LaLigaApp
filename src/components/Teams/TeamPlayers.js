@@ -13,6 +13,7 @@ import ErrorDisplay from '../Common/ErrorDisplay';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
 import teamService from '../../services/teamService';
+import { invalidateMarketData, invalidateAfterMarketListing } from '../../utils/cacheInvalidation';
 
 // Custom SVG Lock Components (removed unused icons)
 
@@ -144,6 +145,8 @@ const TeamPlayers = () => {
         queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
         enabled: !!leagueId && !!teamId,
         retry: false,
+        staleTime: 3 * 60 * 1000, // 3 minutos - equipos cambian con transacciones
+        gcTime: 15 * 60 * 1000, // 15 minutos
     });
 
     // Fetch team ranking to get team name
@@ -151,6 +154,8 @@ const TeamPlayers = () => {
         queryKey: ['standings', leagueId],
         queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
         enabled: !!leagueId,
+        staleTime: 3 * 60 * 1000, // 3 minutos
+        gcTime: 15 * 60 * 1000, // 15 minutos
     });
 
     // Fetch market data to check which players are already in market
@@ -158,6 +163,8 @@ const TeamPlayers = () => {
         queryKey: ['market', leagueId],
         queryFn: () => fantasyAPI.getMarket(leagueId),
         enabled: !!leagueId,
+        staleTime: 2 * 60 * 1000, // 2 minutos - reutiliza caché de Market
+        gcTime: 15 * 60 * 1000, // 15 minutos
     });
 
     // Helper functions adapted for TeamPlayers data structure
@@ -655,8 +662,11 @@ const TeamPlayers = () => {
             );
 
             if (response?.data) {
-                
-                // First refresh team data to get the latest state
+
+                // Invalidate market and player caches
+                await invalidateAfterMarketListing(queryClient, leagueId, teamId);
+
+                // Then refresh team data to get the latest state
                 await refetch();
 
                 // Then optimistically update the market data in the cache
@@ -767,8 +777,11 @@ const TeamPlayers = () => {
             // Check if the withdrawal was successful
             // Most DELETE APIs return status 200/204 with empty or minimal response
             if (response?.status === 200 || response?.status === 204 || response?.data) {
-                
-                // First refresh team data to get the latest state
+
+                // Invalidate market and player caches
+                await invalidateAfterMarketListing(queryClient, leagueId, teamId);
+
+                // Then refresh team data to get the latest state
                 await refetch();
 
                 // Then optimistically remove player from market data in the cache
@@ -840,10 +853,8 @@ const TeamPlayers = () => {
             });
             // Try to refresh data anyway in case the withdrawal succeeded
             try {
-                await Promise.all([
-                    refetch(),
-                    queryClient.invalidateQueries({queryKey: ['market', leagueId]})
-                ]);
+                await invalidateAfterMarketListing(queryClient, leagueId, teamId);
+                await refetch();
             } catch (refreshError) {
                 // Error refreshing data after withdraw error
             }
@@ -961,6 +972,9 @@ const TeamPlayers = () => {
                         }
                     };
                 });
+
+                // Invalidate market data (offer changes affect market)
+                await invalidateMarketData(queryClient, leagueId);
 
                 // Refresh team data to get the latest server state
                 await refetch();

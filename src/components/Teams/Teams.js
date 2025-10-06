@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { Users, Search, User, Trophy, ChevronRight, Target } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
@@ -13,6 +13,7 @@ import { mapSpecialNameForTrends } from '../../utils/playerNameMatcher';
 
 const Teams = () => {
   const { leagueId, user } = useAuthStore();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [trendsInitialized, setTrendsInitialized] = useState(false);
@@ -32,6 +33,8 @@ const Teams = () => {
     queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
     enabled: !!leagueId,
     retry: false,
+    staleTime: 1 * 60 * 1000, // 1 minuto - equipos pueden cambiar con transacciones
+    gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
   // Initialize market trends service
@@ -73,8 +76,13 @@ const Teams = () => {
           if (!teamId) continue;
 
           try {
-            // Get team data including players
-            const teamData = await fantasyAPI.getTeamData(leagueId, teamId);
+            // Get team data including players - use React Query cache
+            const teamData = await queryClient.fetchQuery({
+              queryKey: ['teamData', leagueId, teamId],
+              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
+              staleTime: 15 * 60 * 1000, // 15 minutos
+              gcTime: 30 * 60 * 1000, // 30 minutos
+            });
             let players = [];
 
             if (teamData?.players && Array.isArray(teamData.players)) {
@@ -126,7 +134,7 @@ const Teams = () => {
     };
 
     calculateTeamMarketIncreases();
-  }, [trendsInitialized, standings, leagueId]);
+  }, [trendsInitialized, standings, leagueId, queryClient]);
 
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
 
@@ -244,7 +252,11 @@ const Teams = () => {
           </p>
         </div>
         <button
-          onClick={() => refetch()}
+          onClick={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['standings', leagueId] });
+            await queryClient.invalidateQueries({ queryKey: ['teamData'] });
+            refetch();
+          }}
           className="btn-primary"
         >
           Actualizar

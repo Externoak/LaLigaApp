@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useDeferredValue, useCallback, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { useLocation } from 'react-router-dom';
 import { Users, Search, TrendingUp, User, Target, RefreshCw } from 'lucide-react';
@@ -24,6 +24,7 @@ const formatNumberWithDots = (value) => {
 
 const Players = () => {
   const { leagueId } = useAuthStore();
+  const queryClient = useQueryClient();
   const location = useLocation();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -68,7 +69,8 @@ const Players = () => {
   const { data: playersData, isLoading: playersLoading, error: playersError, refetch: refetchPlayers } = useQuery({
     queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 30 * 60 * 1000, // 30 minutos - datos de jugadores cambian poco (stats, equipos)
+    gcTime: 60 * 60 * 1000, // 1 hora en caché
   });
 
   // Optional: Get market data for pricing information (if available)
@@ -76,7 +78,8 @@ const Players = () => {
     queryKey: ['market', leagueId],
     queryFn: () => fantasyAPI.getMarket(leagueId),
     enabled: !!leagueId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000, // 10 minutos - mercado cambia con frecuencia media
+    gcTime: 30 * 60 * 1000, // 30 minutos
   });
 
   // Initialize both services efficiently
@@ -500,7 +503,10 @@ const Players = () => {
           </p>
         </div>
         <button
-          onClick={() => refetch()}
+          onClick={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['allPlayers'] });
+            refetch();
+          }}
           className="btn-primary"
         >
           Actualizar

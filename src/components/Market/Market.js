@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -18,6 +18,7 @@ import teamService from '../../services/teamService';
 import OfertasTab from './OfertasTab';
 import toast from 'react-hot-toast';
 import Modal from '../Common/Modal';
+import { invalidateAfterBid } from '../../utils/cacheInvalidation';
 
 // Format number with dots for display (e.g., 60.000.000)
 const formatNumberWithDots = (value) => {
@@ -30,6 +31,7 @@ const formatNumberWithDots = (value) => {
 const Market = () => {
   const location = useLocation();
   const { leagueId, user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [positionFilter, setPositionFilter] = useState('all');
   const [priceFilter, setPriceFilter] = useState('all');
@@ -128,8 +130,8 @@ const Market = () => {
       setBidAmount('');
       setIsModifyingBid(false);
 
-      // Refresh market data and force re-render
-      refetch();
+      // Invalidate all related caches
+      await invalidateAfterBid(queryClient, leagueId);
       setOfferChangeKey(prev => prev + 1);
     } catch (error) {
       toast.error(error.message || 'Error al realizar la oferta');
@@ -142,6 +144,9 @@ const Market = () => {
     queryKey: ['market', leagueId],
     queryFn: () => fantasyAPI.getMarket(leagueId),
     enabled: !!leagueId,
+    staleTime: 0, // Sin cache - mercado cambia en tiempo real con pujas
+    gcTime: 1 * 60 * 1000, // 1 minuto en memoria
+    refetchOnMount: true, // Siempre refetch al montar
   });
 
   // Initialize all services efficiently
@@ -395,7 +400,11 @@ const Market = () => {
             {trendsLoading ? 'Cargando...' : 'Tendencias'}
           </button>
           <button
-            onClick={() => refetch()}
+            onClick={async () => {
+              await queryClient.invalidateQueries({ queryKey: ['market', leagueId] });
+              await queryClient.invalidateQueries({ queryKey: ['allPlayers'] });
+              refetch();
+            }}
             className="btn-primary"
           >
             Actualizar

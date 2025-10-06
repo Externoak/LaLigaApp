@@ -41,6 +41,8 @@ const LaLigaTeams = () => {
     queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
     retry: 1,
+    staleTime: 30 * 60 * 1000, // 30 minutos - reutiliza caché de Players
+    gcTime: 60 * 60 * 1000, // 1 hora
   });
 
   // Extract teams from players data

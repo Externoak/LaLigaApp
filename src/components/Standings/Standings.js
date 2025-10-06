@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { useNavigate } from 'react-router-dom';
 import { Trophy, Crown } from 'lucide-react';
@@ -14,6 +14,7 @@ import { mapSpecialNameForTrends } from '../../utils/playerNameMatcher';
 
 const Standings = () => {
   const { leagueId, user } = useAuthStore();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [trendsInitialized, setTrendsInitialized] = useState(false);
   const [teamMarketIncreases, setTeamMarketIncreases] = useState(new Map());
@@ -23,6 +24,8 @@ const Standings = () => {
     queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
     enabled: !!leagueId,
     retry: false,
+    staleTime: 1 * 60 * 1000, // 1 minuto - clasificación puede cambiar con transacciones
+    gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
   // Initialize market trends service
@@ -59,13 +62,19 @@ const Standings = () => {
         }
 
         // For each team, get their players and calculate total increase
+        // Process teams sequentially with delay to avoid rate limiting
         for (const team of standingsData) {
           const teamId = team.id || team.team?.id;
           if (!teamId) continue;
 
           try {
-            // Get team data including players
-            const teamData = await fantasyAPI.getTeamData(leagueId, teamId);
+            // Get team data including players - use React Query cache
+            const teamData = await queryClient.fetchQuery({
+              queryKey: ['teamData', leagueId, teamId],
+              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
+              staleTime: 15 * 60 * 1000, // 15 minutos - equipos no cambian frecuentemente
+              gcTime: 30 * 60 * 1000, // 30 minutos
+            });
             let players = [];
 
             if (teamData?.players && Array.isArray(teamData.players)) {
@@ -105,6 +114,9 @@ const Standings = () => {
 
             increases.set(teamId, totalIncrease);
 
+            // Add delay between requests to avoid 429 (importante!)
+            await new Promise(resolve => setTimeout(resolve, 200));
+
           } catch (error) {
             increases.set(teamId, 0);
           }
@@ -117,7 +129,7 @@ const Standings = () => {
     };
 
     calculateTeamMarketIncreases();
-  }, [trendsInitialized, standings, leagueId]);
+  }, [trendsInitialized, standings, leagueId, queryClient]);
 
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
 
@@ -240,7 +252,11 @@ const Standings = () => {
           </p>
         </div>
         <button
-          onClick={() => refetch()}
+          onClick={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['standings', leagueId] });
+            await queryClient.invalidateQueries({ queryKey: ['teamData'] });
+            refetch();
+          }}
           className="btn-primary"
         >
           Actualizar

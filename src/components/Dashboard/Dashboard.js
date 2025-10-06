@@ -2,7 +2,7 @@ import React from 'react';
 import {useQuery} from '@tanstack/react-query';
 import {motion} from '../../utils/motionShim';
 import {
-  TrendingUp, Users, Trophy, Euro
+  TrendingUp, Users, Trophy, Euro, RefreshCw
 } from 'lucide-react';
 import {fantasyAPI} from '../../services/api';
 import {useAuthStore} from '../../stores/authStore';
@@ -22,6 +22,8 @@ const Dashboard = () => {
         queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
         enabled: !!leagueId,
         retry: false,
+        staleTime: 1 * 60 * 1000, // 1 minuto - puede cambiar con transacciones
+        gcTime: 5 * 60 * 1000, // 5 minutos en memoria
     });
 
 
@@ -29,6 +31,8 @@ const Dashboard = () => {
         queryKey: ['currentWeek'],
         queryFn: () => fantasyAPI.getCurrentWeek(),
         retry: false,
+        staleTime: 30 * 60 * 1000, // 30 minutos - la jornada actual no cambia frecuentemente
+        gcTime: 60 * 60 * 1000, // 1 hora en caché
     });
 
     // Extract standings data from different API response structures
@@ -60,9 +64,11 @@ const Dashboard = () => {
         },
         enabled: !!(currentWeek?.data?.weekNumber || currentWeek?.weekNumber),
         retry: false,
+        staleTime: 15 * 60 * 1000, // 15 minutos - partidos cambian poco una vez programados
+        gcTime: 30 * 60 * 1000, // 30 minutos
     });
 
-    const {data: teamMoney} = useQuery({
+    const {data: teamMoney, refetch: refetchMoney, isFetching: isFetchingMoney} = useQuery({
         queryKey: ['teamMoney', myTeam?.teamId || myTeam?.team?.id],
         queryFn: () => {
             const teamId = myTeam?.teamId || myTeam?.team?.id;
@@ -70,7 +76,18 @@ const Dashboard = () => {
         },
         enabled: !!(myTeam?.teamId || myTeam?.team?.id),
         retry: false,
+        staleTime: 0, // Sin cache - dinero cambia con cada transacción
+        gcTime: 1 * 60 * 1000, // 1 minuto en memoria
+        refetchOnMount: true, // Siempre refetch al montar
     });
+
+    // Función para actualizar todos los datos del dashboard
+    const handleRefresh = async () => {
+        await Promise.all([
+            refetchStandings(),
+            refetchMoney(),
+        ]);
+    };
 
 
     // Calculate stats
@@ -140,6 +157,15 @@ const Dashboard = () => {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    <button
+                        onClick={handleRefresh}
+                        disabled={isFetchingMoney || loadingStandings}
+                        className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Actualizar estadísticas y saldo"
+                    >
+                        <RefreshCw className={`w-4 h-4 ${isFetchingMoney || loadingStandings ? 'animate-spin' : ''}`} />
+                        <span className="hidden sm:inline">Actualizar</span>
+                    </button>
           <span className="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
             Jornada actual {currentWeek?.data?.weekNumber || currentWeek?.weekNumber || '1'}
           </span>

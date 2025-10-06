@@ -7,23 +7,18 @@ import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from './LoadingSpinner';
 import QuickAlertButton from './QuickAlertButton';
+import { useCurrentWeek } from '../../hooks/useCurrentWeek';
 
 const PlayerDetailModal = ({ isOpen, onClose, player }) => {
   const [playerData, setPlayerData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [nextOpponent, setNextOpponent] = useState(null);
-  const [currentWeek, setCurrentWeek] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
   const { leagueId } = useAuthStore();
 
-  const fetchCurrentWeek = useCallback(async () => {
-    try {
-      const response = await fantasyAPI.getCurrentWeek();
-      setCurrentWeek(response);
-    } catch (error) {
-    }
-  }, []);
+  // Use shared hook for current week
+  const { data: currentWeek } = useCurrentWeek();
 
   const fetchPlayerDetails = useCallback(async () => {
     if (!player) return;
@@ -182,11 +177,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
     }
   }, [isOpen, player, leagueId, fetchPlayerDetails]);
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchCurrentWeek();
-    }
-  }, [isOpen, fetchCurrentWeek]);
+  // currentWeek is now loaded automatically via the hook, no need for manual fetch
 
   useEffect(() => {
     if (isOpen && (playerData || player) && currentWeek) {

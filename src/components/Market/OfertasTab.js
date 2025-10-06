@@ -7,6 +7,8 @@ import { fantasyAPI } from '../../services/api';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateAfterOfferResponse } from '../../utils/cacheInvalidation';
 
 const OfertasTab = () => {
   const [playersWithOffers, setPlayersWithOffers] = useState([]);
@@ -15,6 +17,7 @@ const OfertasTab = () => {
   const [confirmModal, setConfirmModal] = useState(null); // { type: 'accept'|'decline', player, offer }
   const [processing, setProcessing] = useState(false);
   const { user, leagueId } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const loadOffersData = useCallback(async () => {
     // More detailed validation
@@ -118,6 +121,13 @@ const OfertasTab = () => {
       );
 
       toast.success(`Oferta aceptada por ${formatCurrency(confirmModal.offer.money)}`);
+
+      // Invalidate all affected caches (ownership changes)
+      const teamId = teamService.getTeamId();
+      if (teamId) {
+        await invalidateAfterOfferResponse(queryClient, leagueId, teamId);
+      }
+
       setConfirmModal(null);
       loadOffersData(); // Refresh the data
     } catch (error) {
@@ -139,6 +149,10 @@ const OfertasTab = () => {
       );
 
       toast.success('Oferta rechazada');
+
+      // Invalidate market cache (offer is removed)
+      await queryClient.invalidateQueries({ queryKey: ['market', leagueId] });
+
       setConfirmModal(null);
       loadOffersData(); // Refresh the data
     } catch (error) {
