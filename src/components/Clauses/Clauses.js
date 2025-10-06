@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import React, { useState, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSpring, animated } from '@react-spring/web';
 import {
   Shield, Clock, TrendingUp, User, Trophy, Filter,
@@ -18,9 +18,11 @@ import toast from 'react-hot-toast';
 import { mapSpecialNameForTrends, findPlayerByNameAndPosition } from '../../utils/playerNameMatcher';
 import Modal from '../Common/Modal';
 import teamService from '../../services/teamService';
+import { invalidateAfterClausePurchase } from '../../utils/cacheInvalidation';
 
 const Clauses = () => {
   const { leagueId, user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [showAll, setShowAll] = useState(false);
   const [clausesData, setClausesData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -142,6 +144,24 @@ const Clauses = () => {
         // Success - refresh clauses data
         await fetchClausesData(true);
 
+        // Invalidate all affected caches (buyer and seller teams)
+        // Normalize standings data to array
+        const standingsArray = Array.isArray(standings) ? standings :
+          standings?.data ? (Array.isArray(standings.data) ? standings.data : []) :
+          standings?.elements ? (Array.isArray(standings.elements) ? standings.elements : []) : [];
+
+        const buyerTeamId = standingsArray.find(t =>
+          (t.userId || t.team?.userId) === user?.userId
+        )?.id || standingsArray.find(t =>
+          (t.userId || t.team?.userId) === user?.userId
+        )?.team?.id;
+
+        const sellerTeamId = selectedClause?.teamId;
+
+        if (buyerTeamId && sellerTeamId) {
+          await invalidateAfterClausePurchase(queryClient, leagueId, buyerTeamId, sellerTeamId);
+        }
+
         // Close modals and reset state
         setShowPaymentConfirmModal(false);
         setShowPaymentModal(false);
@@ -198,6 +218,8 @@ const Clauses = () => {
     queryKey: ['standings', leagueId],
     queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
     enabled: !!leagueId,
+    staleTime: 10 * 60 * 1000, // 10 minutos
+    gcTime: 30 * 60 * 1000, // 30 minutos
   });
 
   // Initialize market trends service
@@ -340,6 +362,12 @@ const Clauses = () => {
       }
     }
 
+    // Si es un force refresh, invalidar todas las queries de teamData primero
+    if (force) {
+      await queryClient.invalidateQueries({ queryKey: ['teamData'] });
+      await queryClient.invalidateQueries({ queryKey: ['standings', leagueId] });
+    }
+
     setLoading(true);
 
     try {
@@ -357,85 +385,84 @@ const Clauses = () => {
       const now = new Date();
 
       // Process all teams concurrently for better performance
-      const teamPromises = standingsArray
-        .filter(rankData => rankData.id || rankData.team?.id)
-        .map(async (rankData) => {
-          const teamId = rankData.id || rankData.team?.id;
+      // Process teams sequentially to avoid 429 errors
+      const allClausesPlayers = [];
 
-          try {
-            const teamData = await fantasyAPI.getTeamData(leagueId, teamId);
+      for (const rankData of standingsArray.filter(rankData => rankData.id || rankData.team?.id)) {
+        const teamId = rankData.id || rankData.team?.id;
 
-            // Extract players data
-            let playersData = [];
-            if (teamData?.players && Array.isArray(teamData.players)) {
-              playersData = teamData.players;
-            } else if (teamData?.data?.players && Array.isArray(teamData.data.players)) {
-              playersData = teamData.data.players;
-            }
+        try {
+          const teamData = await queryClient.fetchQuery({
+            queryKey: ['teamData', leagueId, teamId],
+            queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
+            staleTime: 0, // Sin cache - cláusulas cambian en tiempo real
+            gcTime: 1 * 60 * 1000, // 1 minuto en memoria
+          });
 
-            // Process players with buyout clauses from this team
-            const teamClauses = [];
-            for (const playerTeam of playersData) {
-              const player = playerTeam.playerMaster;
-              if (!player || !playerTeam.buyoutClause) continue;
-
-              // Check if clause is locked
-              let isLocked = false;
-              let unlockTime = null;
-              let hoursRemaining = 0;
-
-              if (playerTeam.buyoutClauseLockedEndTime) {
-                unlockTime = new Date(playerTeam.buyoutClauseLockedEndTime);
-                if (unlockTime > now) {
-                  isLocked = true;
-                  hoursRemaining = Math.ceil((unlockTime - now) / (1000 * 60 * 60));
-                }
-              }
-
-              // Get market trend data
-              const trendData = getPlayerTrendData(player);
-
-              // Try different possible fields for playerTeamId
-              const playerTeamId = playerTeam.playerTeamId || playerTeam.id || player.id;
-
-              teamClauses.push({
-                playerId: player.id,
-                playerTeamId: playerTeamId,
-                playerName: player.nickname || player.name,
-                playerImage: player.images?.transparent?.['256x256'] || null,
-                teamName: player.team?.name || 'N/D',
-                teamBadge: player.team?.badgeColor || null,
-                position: getPositionName(player.positionId),
-                positionId: player.positionId,
-                points: player.points || 0,
-                marketValue: player.marketValue || 0,
-                clausulaAmount: playerTeam.buyoutClause,
-                ownerName: rankData.name || rankData.team?.name || rankData.manager || rankData.team?.manager?.managerName || 'Desconocido',
-                ownerPosition: rankData.position,
-                isLocked: isLocked,
-                unlockTime: unlockTime,
-                hoursRemaining: hoursRemaining,
-                trendData: trendData,
-                purchasePrice: playerTeam.purchasePrice || 0
-              });
-            }
-
-            return teamClauses;
-          } catch (error) {
-            return []; // Return empty array for failed teams
+          // Extract players data
+          let playersData = [];
+          if (teamData?.players && Array.isArray(teamData.players)) {
+            playersData = teamData.players;
+          } else if (teamData?.data?.players && Array.isArray(teamData.data.players)) {
+            playersData = teamData.data.players;
           }
-        });
 
-      // Wait for all team requests to complete
-      const teamResults = await Promise.allSettled(teamPromises);
+          // Process players with buyout clauses from this team
+          for (const playerTeam of playersData) {
+            const player = playerTeam.playerMaster;
+            if (!player || !playerTeam.buyoutClause) continue;
 
-      // Flatten all successful results
-      teamResults.forEach(result => {
-        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-          clausulasInfo.push(...result.value);
+            // Check if clause is locked
+            let isLocked = false;
+            let unlockTime = null;
+            let hoursRemaining = 0;
+
+            if (playerTeam.buyoutClauseLockedEndTime) {
+              unlockTime = new Date(playerTeam.buyoutClauseLockedEndTime);
+              if (unlockTime > now) {
+                isLocked = true;
+                hoursRemaining = Math.ceil((unlockTime - now) / (1000 * 60 * 60));
+              }
+            }
+
+            // Get market trend data
+            const trendData = getPlayerTrendData(player);
+
+            // Try different possible fields for playerTeamId
+            const playerTeamId = playerTeam.playerTeamId || playerTeam.id || player.id;
+
+            allClausesPlayers.push({
+              playerId: player.id,
+              playerTeamId: playerTeamId,
+              playerName: player.nickname || player.name,
+              playerImage: player.images?.transparent?.['256x256'] || null,
+              teamName: player.team?.name || 'N/D',
+              teamBadge: player.team?.badgeColor || null,
+              position: getPositionName(player.positionId),
+              positionId: player.positionId,
+              points: player.points || 0,
+              marketValue: player.marketValue || 0,
+              clausulaAmount: playerTeam.buyoutClause,
+              ownerName: rankData.name || rankData.team?.name || rankData.manager || rankData.team?.manager?.managerName || 'Desconocido',
+              ownerPosition: rankData.position,
+              isLocked: isLocked,
+              unlockTime: unlockTime,
+              hoursRemaining: hoursRemaining,
+              trendData: trendData,
+              purchasePrice: playerTeam.purchasePrice || 0
+            });
+          }
+
+          // Add delay between teams to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 150));
+
+        } catch (error) {
+          // Ignore team errors
         }
-      });
+      }
 
+      // allClausesPlayers already has all the data
+      clausulasInfo.push(...allClausesPlayers);
 
       // Sort clauses
       sortClausesData(clausulasInfo);
@@ -447,7 +474,7 @@ const Clauses = () => {
     } finally {
       setLoading(false);
     }
-  }, [standings, leagueId, lastFetchTime, clausesData, sortClausesData, CACHE_DURATION]);
+  }, [standings, leagueId, lastFetchTime, clausesData, sortClausesData, CACHE_DURATION, queryClient]);
 
 
 

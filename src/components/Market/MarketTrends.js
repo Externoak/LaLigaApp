@@ -40,13 +40,16 @@ const MarketTrends = () => {
     queryKey: ['market', leagueId],
     queryFn: () => fantasyAPI.getMarket(leagueId),
     enabled: !!leagueId,
+    staleTime: 10 * 60 * 1000, // 10 minutos - mercado cambia con frecuencia media
+    gcTime: 30 * 60 * 1000, // 30 minutos
   });
 
   // Fetch all players data from API for matching
   const { data: playersData, isLoading: playersLoading } = useQuery({
     queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 15 * 60 * 1000, // 15 minutos - reutiliza caché compartida
+    gcTime: 60 * 60 * 1000, // 1 hora
   });
 
   // Use centralized player name normalization

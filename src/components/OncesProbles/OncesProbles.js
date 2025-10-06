@@ -6,6 +6,7 @@ import FootballPitch from './FootballPitch';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
 import oncesProbabesService from '../../services/oncesProbles';
 import { fantasyAPI } from '../../services/api';
+import { useCurrentWeek } from '../../hooks/useCurrentWeek';
 
 const OncesProbles = () => {
   const [selectedTeam, setSelectedTeam] = useState('betis');
@@ -14,12 +15,13 @@ const OncesProbles = () => {
   const [error, setError] = useState(null);
   const [, _setCacheStats] = useState(null);
   const [upcomingOpponents, setUpcomingOpponents] = useState([]);
-  const [currentWeek, setCurrentWeek] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const loadingRef = useRef(false);
   const lastFetchedOpponentRef = useRef(null);
 
+  // Use shared hook for current week
+  const { data: currentWeek } = useCurrentWeek();
 
   // Get available teams from the service (memoized to prevent infinite loops)
   const teams = useMemo(() => oncesProbabesService.getAvailableTeams(), []);
@@ -28,16 +30,9 @@ const OncesProbles = () => {
   const { data: playersData } = useQuery({
     queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000 // Cache for 5 minutes
+    staleTime: 30 * 60 * 1000, // 30 minutos - reutiliza caché compartida
+    gcTime: 60 * 60 * 1000, // 1 hora
   });
-
-  const fetchCurrentWeek = useCallback(async () => {
-    try {
-      const response = await fantasyAPI.getCurrentWeek();
-      setCurrentWeek(response);
-    } catch (error) {
-    }
-  }, []);
 
   const fetchUpcomingOpponents = useCallback(async (teamSlug) => {
     try {
@@ -81,7 +76,8 @@ const OncesProbles = () => {
       const collectedMatches = [];
 
       // Try a few weeks ahead to find the next matches
-      for (let week = nextWeek; week <= Math.min(nextWeek + 5, 38) && collectedMatches.length < 2; week++) {
+      // Limit to 3 weeks max and add delay to prevent rate limiting
+      for (let week = nextWeek; week <= Math.min(nextWeek + 2, 38) && collectedMatches.length < 2; week++) {
         try {
           const response = await fantasyAPI.getMatchday(week);
           let matches = [];
@@ -132,6 +128,11 @@ const OncesProbles = () => {
               date: teamMatch.matchDate || teamMatch.date
             });
           });
+
+          // Add delay between requests to avoid 429
+          if (week < Math.min(nextWeek + 2, 38) && collectedMatches.length < 2) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
         } catch (error) {
         }
       }
@@ -187,9 +188,7 @@ const OncesProbles = () => {
     loadTeamLineup(selectedTeam);
   }, [selectedTeam, playersData, loadTeamLineup]);
 
-  useEffect(() => {
-    fetchCurrentWeek();
-  }, [fetchCurrentWeek]);
+  // currentWeek is now loaded automatically via the hook
 
   useEffect(() => {
     if (selectedTeam && currentWeek) {

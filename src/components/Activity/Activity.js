@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from '../../utils/motionShim';
 import {
@@ -22,6 +22,7 @@ import { formatCurrency, timeAgo } from '../../utils/helpers';
 
 const Activity = () => {
   const { leagueId } = useAuthStore();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [activityFilter, setActivityFilter] = useState('all');
@@ -32,7 +33,7 @@ const Activity = () => {
   const [, setLoadingProgress] = useState({ current: 0, total: 0 });
   const [, setIsLoadingAll] = useState(false);
 
-  // Function to fetch all activity data across all indices
+  // Function to fetch all activity data across all indices with smart limiting
   const fetchAllActivityData = async () => {
     if (!leagueId) return [];
 
@@ -42,9 +43,10 @@ const Activity = () => {
     let allActivity = [];
     let currentIndex = 0;
     let hasMoreData = true;
+    const MAX_PAGES = 5; // Límite de páginas para evitar 429s
 
     try {
-      while (hasMoreData) {
+      while (hasMoreData && currentIndex < MAX_PAGES) {
         setLoadingProgress({ current: currentIndex, total: currentIndex + 1 });
 
         const response = await fantasyAPI.getLeagueActivity(leagueId, currentIndex);
@@ -73,11 +75,13 @@ const Activity = () => {
         allActivity = [...allActivity, ...currentPageActivity];
         currentIndex++;
 
-        // Optional: Add a small delay to prevent overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Add delay to prevent rate limiting (importante!)
+        if (hasMoreData && currentIndex < MAX_PAGES) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
       }
 
-            setLoadingProgress({ current: currentIndex, total: currentIndex });
+      setLoadingProgress({ current: currentIndex, total: currentIndex });
 
       return allActivity;
     } catch (error) {
@@ -88,56 +92,69 @@ const Activity = () => {
   };
 
   // Fetch activity data using React Query with our custom fetcher
-  const { data: activity, refetch } = useQuery({
+  const { data: activity, refetch, isLoading: isLoadingActivity } = useQuery({
     queryKey: ['allActivity', leagueId],
     queryFn: fetchAllActivityData,
     enabled: !!leagueId,
-    staleTime: 2 * 60 * 1000, // Cache for 2 minutes since we're fetching a lot of data
+    staleTime: 0, // Sin cache - actividad cambia en tiempo real
+    gcTime: 1 * 60 * 1000, // 1 minuto en memoria
+    refetchOnMount: true, // Siempre refetch al montar
   });
 
   // Fetch managers data for resolving user IDs
-  const { data: ranking } = useQuery({
-    queryKey: ['ranking', leagueId],
+  const { data: ranking, isSuccess: rankingLoaded } = useQuery({
+    queryKey: ['standings', leagueId], // Usar misma key que otros componentes para compartir caché
     queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
     enabled: !!leagueId,
+    staleTime: 1 * 60 * 1000, // 1 minuto - puede cambiar con transacciones
+    gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
   // Fetch players data for resolving player IDs
   const { data: players } = useQuery({
     queryKey: ['players'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 60 * 1000, // 30 minutos - datos de jugadores cambian poco
+    gcTime: 60 * 60 * 1000, // 1 hora en memoria
   });
+
+  // Memoize standings data to prevent re-fetches
+  const standingsData = useMemo(() => {
+    if (!ranking) return [];
+    return Array.isArray(ranking) ? ranking : ranking?.data || ranking?.elements || [];
+  }, [ranking]);
 
   // Fetch all teams data to get buyout clause information
   const { data: allTeamsData } = useQuery({
-    queryKey: ['allTeamsData', leagueId],
+    queryKey: ['allTeamsData', leagueId, standingsData.length],
     queryFn: async () => {
-      if (!ranking) return {};
-
-      const standingsData = Array.isArray(ranking) ? ranking :
-        ranking?.data || ranking?.elements || [];
+      if (standingsData.length === 0) return {};
 
       const teamsData = {};
 
-      // Fetch team data for each team to get buyout clause info
-      const teamPromises = standingsData.slice(0, 10).map(async (team) => {
+      // Fetch team data sequentially with cache and delay to avoid 429
+      for (const team of standingsData.slice(0, 10)) {
         try {
           const teamId = team.id || team.team?.id;
           if (teamId) {
-            const teamData = await fantasyAPI.getTeamData(leagueId, teamId);
+            const teamData = await queryClient.fetchQuery({
+              queryKey: ['teamData', leagueId, teamId],
+              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
+              staleTime: 15 * 60 * 1000, // 15 minutos
+              gcTime: 30 * 60 * 1000, // 30 minutos
+            });
             teamsData[teamId] = teamData;
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 150));
           }
         } catch (error) {
           // Ignore team data fetch errors
         }
-      });
-
-      await Promise.all(teamPromises);
+      }
 
       return teamsData;
     },
-    enabled: !!leagueId && !!ranking,
+    enabled: !!leagueId && rankingLoaded && standingsData.length > 0,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
     retry: 1,
   });
@@ -741,7 +758,12 @@ const Activity = () => {
           </p>
         </div>
         <button
-          onClick={() => refetch()}
+          onClick={async () => {
+            await queryClient.invalidateQueries({ queryKey: ['allActivity', leagueId] });
+            await queryClient.invalidateQueries({ queryKey: ['standings', leagueId] });
+            await queryClient.invalidateQueries({ queryKey: ['allTeamsData', leagueId] });
+            refetch();
+          }}
           className="btn-primary flex items-center gap-2"
         >
           <RefreshCw className="w-4 h-4" />
@@ -844,7 +866,38 @@ const Activity = () => {
 
       {/* Activity List */}
       <div className="card divide-y divide-gray-200 dark:divide-dark-border">
-        {filteredActivity.map((item, index) => (
+        {isLoadingActivity ? (
+          // Loading Skeleton
+          <>
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="p-4 md:p-6 animate-pulse">
+                {/* Mobile/Desktop Skeleton */}
+                <div className="flex items-center gap-4">
+                  {/* Icon Placeholder */}
+                  <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0"></div>
+
+                  {/* Content Placeholder */}
+                  <div className="flex-1 space-y-3">
+                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+                  </div>
+
+                  {/* Amount Placeholder */}
+                  <div className="hidden md:block w-24 h-8 bg-gray-200 dark:bg-gray-700 rounded-full"></div>
+                </div>
+              </div>
+            ))}
+          </>
+        ) : filteredActivity.length === 0 ? (
+          // Empty State
+          <div className="p-12 text-center">
+            <p className="text-gray-500 dark:text-gray-400 text-lg">
+              No se encontraron actividades con los filtros seleccionados
+            </p>
+          </div>
+        ) : (
+          // Activity Items
+          filteredActivity.map((item, index) => (
           <motion.div
             key={`${item.id}-${index}`}
             initial={{ opacity: 0, y: 20 }}
@@ -1016,11 +1069,12 @@ const Activity = () => {
               </div>
             </div>
           </motion.div>
-        ))}
+        ))
+        )}
       </div>
 
       {/* Load More Button */}
-      {filteredActivity.length >= limit && activityData.length > limit && (
+      {!isLoadingActivity && filteredActivity.length >= limit && activityData.length > limit && (
         <div className="text-center">
           <button
             onClick={() => setLimit(prev => prev + 50)}
@@ -1032,20 +1086,6 @@ const Activity = () => {
         </div>
       )}
 
-      {/* Empty State */}
-      {filteredActivity.length === 0 && (
-        <div className="card p-12 text-center">
-          <ActivityIcon className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            No se encontró actividad
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400">
-            {searchTerm || activityFilter !== 'all' || timeFilter !== 'all' || userFilter !== 'all'
-              ? 'Intenta ajustar los filtros de búsqueda'
-              : 'La actividad aparecerá cuando los usuarios realicen acciones en la liga'}
-          </p>
-        </div>
-      )}
     </div>
   );
 };

@@ -82,8 +82,8 @@ const defaultConfig = {
     allowedOrigins: toList(process.env.APP_ALLOWED_ORIGINS, defaultAllowedOrigins),
     allowNullOrigin: toBool(process.env.APP_ALLOW_NULL_ORIGIN, true),
     rateLimit: {
-      windowMs: toInt(process.env.PROXY_RATE_LIMIT_WINDOW_MS, 60_000),
-      max: toInt(process.env.PROXY_RATE_LIMIT_MAX, 60)
+      windowMs: toInt(process.env.PROXY_RATE_LIMIT_WINDOW_MS, 300_000),
+      max: toInt(process.env.PROXY_RATE_LIMIT_MAX, 300)
     },
     allowBearerOnly: toBool(process.env.PROXY_ALLOW_BEARER_ONLY, true)
   },

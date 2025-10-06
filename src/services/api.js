@@ -265,6 +265,10 @@ api.interceptors.response.use(
         toast.error('🔍 Recurso no encontrado.');
         break;
 
+      case 429:
+        toast.error('⏱️ Demasiadas peticiones: El servidor ha limitado temporalmente las solicitudes. Por favor, espera unos segundos e intenta de nuevo.');
+        break;
+
       case 500:
         toast.error('💥 Error del servidor.');
         break;

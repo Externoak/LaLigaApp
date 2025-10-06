@@ -1,5 +1,5 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { Link, useNavigate } from 'react-router-dom';
 import { Activity, ShoppingCart, Shield, TrendingUp, Clock, Lock, Euro, Calendar } from 'lucide-react';
@@ -9,6 +9,7 @@ import LoadingSpinner from '../Common/LoadingSpinner';
 
 const RecentActivity = ({ leagueId }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [showAll, setShowAll] = React.useState(false);
 
   const { data: activity, isLoading } = useQuery({
@@ -18,10 +19,12 @@ const RecentActivity = ({ leagueId }) => {
   });
 
   // Fetch managers data for resolving user IDs
-  const { data: ranking } = useQuery({
-    queryKey: ['ranking', leagueId],
+  const { data: ranking, isSuccess: rankingLoaded } = useQuery({
+    queryKey: ['standings', leagueId], // Usar misma key para compartir caché
     queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
     enabled: !!leagueId,
+    staleTime: 10 * 60 * 1000, // 10 minutos
+    gcTime: 30 * 60 * 1000, // 30 minutos
   });
 
   // Fetch players data for resolving player IDs
@@ -31,35 +34,43 @@ const RecentActivity = ({ leagueId }) => {
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
+  // Memoize standings data to prevent re-fetches
+  const standingsData = useMemo(() => {
+    if (!ranking) return [];
+    return Array.isArray(ranking) ? ranking : ranking?.data || ranking?.elements || [];
+  }, [ranking]);
+
   // Fetch all teams data to get buyout clause information
   const { data: allTeamsData } = useQuery({
-    queryKey: ['allTeamsData', leagueId],
+    queryKey: ['allTeamsData', leagueId, standingsData.length],
     queryFn: async () => {
-      if (!ranking) return {};
-
-      const standingsData = Array.isArray(ranking) ? ranking :
-        ranking?.data || ranking?.elements || [];
+      if (standingsData.length === 0) return {};
 
       const teamsData = {};
 
-      // Fetch team data for each team to get buyout clause info (limit to first 10 for performance)
-      const teamPromises = standingsData.slice(0, 10).map(async (team) => {
+      // Fetch team data sequentially with cache and delay to avoid 429
+      for (const team of standingsData.slice(0, 10)) {
         try {
           const teamId = team.id || team.team?.id;
           if (teamId) {
-            const teamData = await fantasyAPI.getTeamData(leagueId, teamId);
+            const teamData = await queryClient.fetchQuery({
+              queryKey: ['teamData', leagueId, teamId],
+              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
+              staleTime: 15 * 60 * 1000, // 15 minutos
+              gcTime: 30 * 60 * 1000, // 30 minutos
+            });
             teamsData[teamId] = teamData;
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 150));
           }
         } catch (error) {
           // Ignore team data fetch errors
         }
-      });
-
-      await Promise.all(teamPromises);
+      }
 
       return teamsData;
     },
-    enabled: !!leagueId && !!ranking,
+    enabled: !!leagueId && rankingLoaded && standingsData.length > 0,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
     retry: 1,
   });
