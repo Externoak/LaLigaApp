@@ -1,0 +1,15 @@
+services:
+
+  backend:
+    image: laligaapp-backend:latest
+    restart: unless-stopped
+    networks:
+      - internal
+  
+  frontend:
+    image: laligaapp-frontend:latest
+    restart: unless-stopped
+    networks:
+      - internal
+    ports:
+      - 80:80
