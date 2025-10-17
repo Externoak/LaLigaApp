@@ -514,60 +514,60 @@ const RecentActivity = ({ leagueId }) => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: index * 0.05 }}
-            className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            className="p-3 sm:p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
           >
-            <div className="flex items-start gap-3">
-              {/* Player Image or Special Activity Icons */}
+            <div className="flex items-start gap-2 sm:gap-3">
+              {/* Player Image or Special Activity Icons - Responsive size */}
               <div className="flex-shrink-0">
                 {/* Show money icon for earnings activities */}
                 {(item.amount && !item.playerMasterId && !item.playerName && !item.player) || (item.activityTypeId === 6) ? (
-                  <div className="w-20 h-20 rounded-full border-2 border-green-200 dark:border-green-700 bg-green-100 dark:bg-green-800 flex items-center justify-center">
-                    <span className="text-green-600 dark:text-green-400 text-3xl font-bold">€</span>
+                  <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-green-200 dark:border-green-700 bg-green-100 dark:bg-green-800 flex items-center justify-center">
+                    <span className="text-green-600 dark:text-green-400 text-xl sm:text-3xl font-bold">€</span>
                   </div>
                 ) : (item.activityTypeId === 7) ? (
-                  <div className="w-20 h-20 rounded-full border-2 border-red-200 dark:border-red-700 bg-red-100 dark:bg-red-800 flex items-center justify-center">
-                    <Calendar className="text-red-600 dark:text-red-400 w-8 h-8" />
+                  <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-red-200 dark:border-red-700 bg-red-100 dark:bg-red-800 flex items-center justify-center">
+                    <Calendar className="text-red-600 dark:text-red-400 w-5 h-5 sm:w-8 sm:h-8" />
                   </div>
                 ) : getPlayerImage(item) ? (
-                  <div className="w-20 h-20 rounded-full border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white shadow-md">
+                  <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white shadow-md">
                     <img
                       src={getPlayerImage(item)}
                       alt={getPlayerName(item)}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.parentNode.innerHTML = `<div class="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-lg font-semibold">${getPlayerName(item).charAt(0).toUpperCase()}</div>`;
+                        e.target.parentNode.innerHTML = `<div class="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm sm:text-lg font-semibold">${getPlayerName(item).charAt(0).toUpperCase()}</div>`;
                       }}
                     />
                   </div>
                 ) : (
-                  <div className="w-20 h-20 rounded-full border-2 border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                    <span className="text-gray-500 dark:text-gray-400 text-xl font-semibold">
+                  <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                    <span className="text-gray-500 dark:text-gray-400 text-base sm:text-xl font-semibold">
                       {getPlayerName(item).charAt(0).toUpperCase()}
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* Activity Icon */}
+              {/* Activity Icon - Responsive size */}
               <div className="flex-shrink-0">
-                <div className={`p-2 rounded-full ${getActivityColor(item.activityTypeId || item.type, item)} shadow-sm`}>
+                <div className={`p-1.5 sm:p-2 rounded-full ${getActivityColor(item.activityTypeId || item.type, item)} shadow-sm`}>
                   {getActivityIcon(item.activityTypeId || item.type, item)}
                 </div>
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <p className="text-base text-gray-900 dark:text-white">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-0">
+                  <p className="text-sm sm:text-base text-gray-900 dark:text-white leading-snug">
                     {getFullActivityDescription(item)}
                   </p>
                   {/* Show amount badge for player transactions (exclude activityTypeId 7) */}
                   {item.amount && (item.playerMasterId || item.playerName || item.player) && item.activityTypeId !== 7 && (
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${
+                    <span className={`px-2 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-medium sm:ml-2 self-start sm:self-auto whitespace-nowrap ${
                       // For purchases (1), signings (31), and clauses (32): show as expense (red/negative)
                       // For sales (33): show as income (green/positive)
-                      (item.activityTypeId === 1 || item.activityTypeId === 31 || item.activityTypeId === 32 || 
-                       (item.activityTypeId === 1 && getActivityText(item) === 'clausuló')) 
+                      (item.activityTypeId === 1 || item.activityTypeId === 31 || item.activityTypeId === 32 ||
+                       (item.activityTypeId === 1 && getActivityText(item) === 'clausuló'))
                       ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
                       : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                     }`}>
@@ -579,9 +579,9 @@ const RecentActivity = ({ leagueId }) => {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                <div className="flex items-center gap-1.5 sm:gap-2 mt-1 sm:mt-2">
+                  <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                  <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                     {timeAgo(item.createdAt || item.timestamp)}
                   </p>
                 </div>
