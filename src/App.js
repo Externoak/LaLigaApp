@@ -4,6 +4,7 @@ import { useAuthStore } from './stores/authStore';
 import Layout from './components/Layout/Layout';
 import LoadingSpinner from './components/Common/LoadingSpinner';
 import Lineup from './components/Teams/Lineup';
+import LineupEditor from './components/Teams/LineupEditor';
 import TeamPlayers from './components/Teams/TeamPlayers';
 import LaLigaTeams from './components/Teams/LaLigaTeams';
 import MarketTrends from './components/Market/MarketTrends';
@@ -88,6 +89,8 @@ function AppRoutes() {
         <Route path="/laliga-teams" element={<LaLigaTeams />} />
         <Route path="/lineup" element={<Lineup />} />
         <Route path="/lineup/:teamId" element={<Lineup />} />
+        <Route path="/lineup-editor" element={<LineupEditor />} />
+        <Route path="/my-lineup" element={<LineupEditor />} />
         <Route path="/matches" element={<Matches />} />
         <Route path="/players" element={<Players />} />
         <Route path="/clauses" element={<Clauses />} />

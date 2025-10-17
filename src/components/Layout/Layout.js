@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home, Trophy, ShoppingCart, Users, Calendar, Search, X, Moon, Sun,
-  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug, FileText
+  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug, FileText, Edit3
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { fantasyAPI } from '../../services/api';
@@ -378,7 +378,8 @@ const Layout = ({ children }) => {
     { path: '/standings', icon: Trophy, label: 'Clasificación' },
     { path: '/market', icon: ShoppingCart, label: 'Mercado' },
     { path: '/teams', icon: Users, label: 'Equipos' },
-    { path: '/lineup', icon: Target, label: 'Alineaciones' },
+    { path: '/my-lineup', icon: Edit3, label: 'Mi Alineación' },
+    { path: '/lineup', icon: Target, label: 'Ver Alineaciones' },
     { path: '/onces-probables', icon: Clock, label: 'Onces Probables' },
     { path: '/matches', icon: Calendar, label: 'Jornadas' },
     { path: '/players', icon: User, label: 'Jugadores' },
@@ -672,6 +673,28 @@ const Layout = ({ children }) => {
                   onClose={() => setShowSearchResults(false)}
                 />
               </div>
+            </div>
+
+            {/* Mobile User Info - Only visible on small screens */}
+            <div className="flex sm:hidden items-center gap-1.5">
+              {/* Fantasy Logo - smaller on mobile */}
+              <img
+                src="./fantasy_emblem.png"
+                alt="LaLiga Fantasy"
+                className="h-6 w-auto object-contain flex-shrink-0"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+
+              {/* Balance Badge - more compact */}
+              {user && user.marketAvailable !== undefined && (
+                <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 rounded border border-green-200 dark:border-green-800">
+                  <span className="text-[10px] font-bold text-green-700 dark:text-green-300 whitespace-nowrap">
+                    {formatCurrency(user.marketAvailable)}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Right Actions */}

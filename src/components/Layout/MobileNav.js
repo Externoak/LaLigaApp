@@ -1,16 +1,16 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Trophy, ShoppingCart, Users, User, Menu } from 'lucide-react';
+import { Home, Trophy, ShoppingCart, Users, Edit3, Menu } from 'lucide-react';
 
 const MobileNav = ({ onMenuClick }) => {
   const location = useLocation();
 
   const mobileMenuItems = [
     { path: '/', icon: Home, label: 'Inicio' },
-    { path: '/standings', icon: Trophy, label: 'Clasificación' },
+    { path: '/standings', icon: Trophy, label: 'Tabla' },
+    { path: '/my-lineup', icon: Edit3, label: 'Alineación' },
     { path: '/market', icon: ShoppingCart, label: 'Mercado' },
     { path: '/teams', icon: Users, label: 'Equipos' },
-    { path: '/players', icon: User, label: 'Jugadores' },
   ];
 
   return (

@@ -372,6 +372,7 @@ const buildGitHubProxyHandler = (config) => {
         res.setHeader('Vary', 'Origin');
       }
       res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate'); // Always fetch fresh version data
 
       res.json(response.data);
     } catch (error) {
