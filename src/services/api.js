@@ -402,6 +402,7 @@ export const fantasyAPI = {
   // Ligas
   getLeagues: () => api.get('/v4/leagues?x-lang=es'),
   getLeagueRanking: (leagueId) => api.get(`/v4/leagues/${leagueId}/ranking?x-lang=es`),
+  getLeagueRankingByWeek: (leagueId, week) => api.get(`/v5/leagues/${leagueId}/ranking/${week}?x-lang=es`),
   getLeagueActivity: (leagueId, index = 0) => api.get(`/v5/leagues/${leagueId}/activity/${index}?x-lang=es`),
 
   // Endpoints con datos mock para desarrollo
@@ -417,6 +418,13 @@ export const fantasyAPI = {
   // Equipos
   getTeamData: (leagueId, teamId) => api.get(`/v4/leagues/${leagueId}/teams/${teamId}?x-lang=es`),
   getTeamLineup: (teamId, week) => api.get(`/v4/teams/${teamId}/lineup/week/${week}?x-lang=es`),
+
+  // Lineup Management
+  getCurrentLineup: (teamId) => api.get(`/v3/teams/${teamId}/lineup?x-lang=es`),
+  updateLineup: (teamId, lineupData) => api.put(`/v3/teams/${teamId}/lineup?x-lang=es`, lineupData),
+  getFreeFormations: () => api.get('/v4/teams/lineup/formations?option=free&x-lang=es'),
+  getPremiumFormations: () => api.get('/v4/teams/lineup/formations?option=premium&x-lang=es'),
+  getPremiumConfiguration: () => api.get('/v4/leagues/premium-configuration?x-lang=es'),
 
   // Mercado
   getMarket: (leagueId) => api.get(`/v3/league/${leagueId}/market?x-lang=es`),

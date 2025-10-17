@@ -92,7 +92,7 @@ const Market = () => {
       ? teamService.getOfferAmount(bidPlayerData.playerMaster.id)
       : 0;
 
-    const totalAvailableForBids = isModifyingBid 
+    const totalAvailableForBids = isModifyingBid
       ? teamService.getAvailableMoneyForBids() + currentBidAmount
       : teamService.getAvailableMoneyForBids();
 
@@ -1072,8 +1072,8 @@ const BidModal = ({ player, isOpen, onClose, bidAmount, setBidAmount, onBid, mak
     }, 0);
   };
 
-  // Get minimum bid - should be at least the player's market value
-  const minimumBid = playerData.marketValue;
+  // Get minimum bid - should be the higher value between market value and sale price
+  const minimumBid = Math.max(playerData.marketValue, player.salePrice);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="p-6 mx-4">

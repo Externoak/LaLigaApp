@@ -673,24 +673,26 @@ const Lineup = ({ teamId: propTeamId }) => {
           </div>
 
           {/* Half Pitch Visualization */}
-          <div className="rounded-lg p-3 sm:p-6 min-h-[350px] sm:min-h-[400px] relative overflow-hidden" style={{background: `linear-gradient(to bottom, #0A6522, #0A6522)`}}>
+          <div className="rounded-lg p-3 sm:p-6 pb-16 sm:pb-6 min-h-[420px] sm:min-h-[400px] relative overflow-hidden" style={{background: `linear-gradient(to bottom, #0A6522, #0A6522)`}}>
             {/* Center line at top */}
             <div className="absolute top-4 left-0 right-0 h-0.5 bg-white/50">
               <div className="absolute left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-16 h-16 border-2 border-white/50 rounded-full"></div>
               <div className="absolute left-1/2 transform -translate-x-1/2 -translate-y-0.5 w-1 h-1 bg-white/70 rounded-full"></div>
             </div>
 
+            {/* Penalty area - outer */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-64 h-24 border-2 border-white/30 border-b-0 rounded-t-lg"></div>
+
+            {/* Goal area - inner */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-48 h-14 border-2 border-white/40 border-b-0 rounded-t-lg"></div>
+
             {/* Our Goal at bottom */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-white/40 rounded-t-lg border-2 border-white/60 border-b-0">
+            <div className="absolute bottom-4 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-white/40 rounded-t-lg border-2 border-white/60 border-b-0">
               <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-20 h-3 bg-white/60 rounded-t"></div>
-              {/* Goal area */}
-              <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 w-48 h-8 border-2 border-white/40 border-b-0 rounded-t-lg"></div>
-              {/* Penalty area */}
-              <div className="absolute -top-16 left-1/2 transform -translate-x-1/2 w-64 h-16 border-2 border-white/30 border-b-0 rounded-t-lg"></div>
             </div>
 
-            <div className="absolute inset-4 border-2 border-white/30 rounded-lg border-t-0">
-              <div className="w-full h-full flex flex-col justify-between pt-8">
+            <div className="absolute top-4 left-4 right-4 bottom-4 border-2 border-white/30 rounded-lg border-t-0">
+              <div className="w-full h-full flex flex-col justify-between pt-8 pb-16 sm:pb-0">
 
                 {formation.rows.map((row, rowIndex) => {
                   const isGoalkeeperRow = rowIndex === formation.rows.length - 1;

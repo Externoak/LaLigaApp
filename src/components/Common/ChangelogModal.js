@@ -51,8 +51,9 @@ const ChangelogModal = ({ isOpen, onClose }) => {
       const trimmedLine = line.trim();
       if (!trimmedLine) return;
 
-      // Check if line is a section header (starts with emoji or VERSION keyword)
-      if (trimmedLine.match(/^[⏫🔒🎯🔄🆕🚀💰🎨🔧🧹]/)) {
+      // Check if line is a section header (contains version pattern like v3.3.2 or v3.3.1)
+      // This matches any line with (vX.X.X): at the end
+      if (trimmedLine.match(/\(v\d+\.\d+\.\d+\):/)) {
         if (currentSection) {
           sections.push(currentSection);
         }

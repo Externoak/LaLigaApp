@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown } from 'lucide-react';
+import { Trophy, Crown, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { formatCurrency, formatNumber } from '../../utils/helpers';
@@ -18,6 +18,9 @@ const Standings = () => {
   const navigate = useNavigate();
   const [trendsInitialized, setTrendsInitialized] = useState(false);
   const [teamMarketIncreases, setTeamMarketIncreases] = useState(new Map());
+  const [teamWeekPoints, setTeamWeekPoints] = useState(new Map());
+  const [sortBy, setSortBy] = useState('position'); // position, manager, points, weekPoints, value, marketIncrease
+  const [sortOrder, setSortOrder] = useState('asc'); // asc, desc
 
   const { data: standings, isLoading, error, refetch } = useQuery({
     queryKey: ['standings', leagueId],
@@ -26,6 +29,14 @@ const Standings = () => {
     retry: false,
     staleTime: 1 * 60 * 1000, // 1 minuto - clasificación puede cambiar con transacciones
     gcTime: 5 * 60 * 1000, // 5 minutos en memoria
+  });
+
+  // Get current week to fetch week points
+  const { data: currentWeekData } = useQuery({
+    queryKey: ['currentWeek'],
+    queryFn: () => fantasyAPI.getCurrentWeek(),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   // Initialize market trends service
@@ -131,6 +142,89 @@ const Standings = () => {
     calculateTeamMarketIncreases();
   }, [trendsInitialized, standings, leagueId, queryClient]);
 
+  // Fetch week points from weekly ranking
+  useEffect(() => {
+    const fetchTeamWeekPoints = async () => {
+      if (!leagueId || !currentWeekData) return;
+
+      // Extract current week number
+      let currentWeek = null;
+      if (currentWeekData?.week) {
+        currentWeek = currentWeekData.week;
+      } else if (currentWeekData?.data?.week) {
+        currentWeek = currentWeekData.data.week;
+      } else if (currentWeekData?.weekNumber) {
+        currentWeek = currentWeekData.weekNumber;
+      } else if (currentWeekData?.data?.weekNumber) {
+        currentWeek = currentWeekData.data.weekNumber;
+      }
+
+      if (!currentWeek) return;
+
+      try {
+        // Check if current week has started by fetching matches
+        let weekToShow = currentWeek;
+        try {
+          const matchesResponse = await queryClient.fetchQuery({
+            queryKey: ['matches', currentWeek],
+            queryFn: () => fantasyAPI.getMatchday(currentWeek),
+            staleTime: 2 * 60 * 1000,
+            gcTime: 5 * 60 * 1000,
+          });
+
+          const matches = Array.isArray(matchesResponse) ? matchesResponse :
+                         matchesResponse?.data || matchesResponse?.elements || [];
+
+          // Check if any match has started (matchState >= 2)
+          const hasAnyMatchStarted = matches.some(match =>
+            typeof match.matchState === 'number' && match.matchState >= 2
+          );
+
+          // If no matches have started, use previous week
+          if (!hasAnyMatchStarted && currentWeek > 1) {
+            weekToShow = currentWeek - 1;
+          }
+        } catch (matchError) {
+          // If we can't fetch matches, just use current week
+        }
+
+        // Fetch weekly ranking which contains week points
+        const weeklyRanking = await queryClient.fetchQuery({
+          queryKey: ['weeklyRanking', leagueId, weekToShow],
+          queryFn: () => fantasyAPI.getLeagueRankingByWeek(leagueId, weekToShow),
+          staleTime: 2 * 60 * 1000, // 2 minutes - week points change frequently
+          gcTime: 5 * 60 * 1000,
+        });
+
+        const weekPointsMap = new Map();
+
+        // Extract weekly ranking data
+        let weeklyData = [];
+        if (Array.isArray(weeklyRanking)) {
+          weeklyData = weeklyRanking;
+        } else if (weeklyRanking?.data && Array.isArray(weeklyRanking.data)) {
+          weeklyData = weeklyRanking.data;
+        }
+
+        // Map week points by team ID
+        weeklyData.forEach(item => {
+          const teamId = item.team?.id;
+          const weekPoints = item.points || 0; // "points" in weekly ranking is the week points
+          if (teamId) {
+            weekPointsMap.set(teamId, weekPoints);
+          }
+        });
+
+        setTeamWeekPoints(weekPointsMap);
+
+      } catch (error) {
+        console.error('Error fetching team week points:', error);
+      }
+    };
+
+    fetchTeamWeekPoints();
+  }, [leagueId, currentWeekData, queryClient]);
+
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
 
   if (error) {
@@ -159,17 +253,100 @@ const Standings = () => {
     return [];
   }, [standings]);
 
-  // Sort by position if available, otherwise by points descending (memoized)
+  // Helper functions defined before useMemo
+  const getTeamName = (item) => {
+    return item.name || item.team?.name || 'Equipo';
+  };
+
+  const getManagerName = (item) => {
+    return item.manager || item.team?.manager?.managerName || 'Manager';
+  };
+
+  const getTeamPoints = (item) => {
+    return item.points || item.team?.points || 0;
+  };
+
+  const getTeamValue = (item) => {
+    return item.teamValue || item.team?.teamValue || 0;
+  };
+
+  const getTeamId = (item) => {
+    return item.id || item.team?.id;
+  };
+
+  const getTeamMarketIncrease = (item) => {
+    const teamId = getTeamId(item);
+    return teamMarketIncreases.get(teamId) || 0;
+  };
+
+  const getWeekPoints = (item) => {
+    const teamId = getTeamId(item);
+    const weekPointsFromMap = teamWeekPoints.get(teamId);
+    if (weekPointsFromMap !== undefined) {
+      return weekPointsFromMap;
+    }
+    return item.weekPoints || item.team?.weekPoints || 0;
+  };
+
+  // Handle column header click for sorting
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      // Toggle sort order if clicking the same column
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new column and default order
+      setSortBy(column);
+      setSortOrder(column === 'position' ? 'asc' : 'desc');
+    }
+  };
+
+  // Sort standings based on selected column and order
   const sortedStandings = useMemo(() => {
     const data = Array.isArray(standingsData) ? [...standingsData] : [];
+
     return data.sort((a, b) => {
-      if (a.position && b.position) {
-        return a.position - b.position;
+      let valueA, valueB;
+
+      switch (sortBy) {
+        case 'position':
+          valueA = a.position || 999;
+          valueB = b.position || 999;
+          break;
+        case 'manager':
+          valueA = getManagerName(a).toLowerCase();
+          valueB = getManagerName(b).toLowerCase();
+          break;
+        case 'points':
+          valueA = getTeamPoints(a);
+          valueB = getTeamPoints(b);
+          break;
+        case 'weekPoints':
+          valueA = getWeekPoints(a);
+          valueB = getWeekPoints(b);
+          break;
+        case 'value':
+          valueA = getTeamValue(a);
+          valueB = getTeamValue(b);
+          break;
+        case 'marketIncrease':
+          valueA = getTeamMarketIncrease(a);
+          valueB = getTeamMarketIncrease(b);
+          break;
+        default:
+          valueA = a.position || 999;
+          valueB = b.position || 999;
       }
-      // Sort by points (highest first)
-      return (b.points || 0) - (a.points || 0);
+
+      // Handle string vs number comparison
+      if (typeof valueA === 'string' && typeof valueB === 'string') {
+        return sortOrder === 'asc'
+          ? valueA.localeCompare(valueB)
+          : valueB.localeCompare(valueA);
+      }
+
+      return sortOrder === 'asc' ? valueA - valueB : valueB - valueA;
     });
-  }, [standingsData]);
+  }, [standingsData, sortBy, sortOrder, teamMarketIncreases]);
 
   // Guarded UI returns after hooks
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
@@ -192,22 +369,6 @@ const Standings = () => {
     return null;
   };
 
-  const getTeamName = (item) => {
-    return item.name || item.team?.name || 'Equipo';
-  };
-
-  const getManagerName = (item) => {
-    return item.manager || item.team?.manager?.managerName || 'Manager';
-  };
-
-  const getTeamPoints = (item) => {
-    return item.points || item.team?.points || 0;
-  };
-
-  const getTeamValue = (item) => {
-    return item.teamValue || item.team?.teamValue || 0;
-  };
-
   const getUserId = (item) => {
     return item.userId || item.team?.userId || item.team?.manager?.id;
   };
@@ -215,15 +376,6 @@ const Standings = () => {
   const isCurrentUser = (item) => {
     const itemUserId = getUserId(item);
     return itemUserId && user?.userId && itemUserId.toString() === user.userId.toString();
-  };
-
-  const getTeamId = (item) => {
-    return item.id || item.team?.id;
-  };
-
-  const getTeamMarketIncrease = (item) => {
-    const teamId = getTeamId(item);
-    return teamMarketIncreases.get(teamId) || 0;
   };
 
   const formatMarketChange = (change) => {
@@ -237,6 +389,32 @@ const Standings = () => {
     if (teamId) {
       navigate(`/teams/${teamId}/players`);
     }
+  };
+
+  // Helper component for sortable column headers
+  const SortableHeader = ({ column, children, align = 'left' }) => {
+    const isActive = sortBy === column;
+    const alignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+
+    return (
+      <th
+        className={`px-6 py-4 ${alignClass} text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors select-none`}
+        onClick={() => handleSort(column)}
+      >
+        <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}>
+          <span>{children}</span>
+          {isActive ? (
+            sortOrder === 'asc' ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
+            )
+          ) : (
+            <ChevronsUpDown className="w-4 h-4 opacity-40" />
+          )}
+        </div>
+      </th>
+    );
   };
 
   return (
@@ -269,21 +447,12 @@ const Standings = () => {
           <table className="w-full">
             <thead className="bg-gray-50 dark:bg-gray-800">
               <tr>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Posición
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Manager
-                </th>
-                <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Subida Valor
-                </th>
-                <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Puntos
-                </th>
-                <th className="px-6 py-4 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Valor
-                </th>
+                <SortableHeader column="position">Posición</SortableHeader>
+                <SortableHeader column="manager">Manager</SortableHeader>
+                <SortableHeader column="weekPoints" align="right">Pts Jornada</SortableHeader>
+                <SortableHeader column="points" align="right">Puntos</SortableHeader>
+                <SortableHeader column="marketIncrease" align="right">Subida Valor</SortableHeader>
+                <SortableHeader column="value" align="right">Valor</SortableHeader>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -339,6 +508,24 @@ const Standings = () => {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="text-lg font-bold text-primary-600 dark:text-primary-400">
+                        {formatNumber(getWeekPoints(item))}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        jornada actual
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <div className="text-lg font-bold text-gray-900 dark:text-white">
+                        {formatNumber(getTeamPoints(item))}
+                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        total
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
                       <div className={`text-sm font-medium ${
                         getTeamMarketIncrease(item) > 0
                           ? 'text-green-600 dark:text-green-400'
@@ -350,15 +537,6 @@ const Standings = () => {
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">
                         {trendsInitialized ? 'últimas 24h' : 'cargando...'}
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <div className="text-lg font-bold text-gray-900 dark:text-white">
-                        {formatNumber(getTeamPoints(item))}
-                      </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        puntos
                       </div>
                     </td>
 
@@ -441,28 +619,36 @@ const Standings = () => {
                 </div>
 
                 {/* Stats - Improved spacing and size */}
-                <div className="grid grid-cols-3 gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="grid pt-3 border-t border-gray-200 dark:border-gray-700" style={{gridTemplateColumns: '1fr 1fr 1.5fr 1.5fr', gap: '0.25rem'}}>
                   <div className="text-center">
-                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
-                      Puntos
+                    <div className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">
+                      Jor
                     </div>
-                    <div className="text-2xl font-black text-gray-900 dark:text-white">
+                    <div className="text-xs font-black text-primary-600 dark:text-primary-400 leading-tight">
+                      {formatNumber(getWeekPoints(item))}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">
+                      Pts
+                    </div>
+                    <div className="text-xs font-black text-gray-900 dark:text-white leading-tight">
                       {formatNumber(getTeamPoints(item))}
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                    <div className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">
                       Valor
                     </div>
-                    <div className="text-base font-bold text-gray-900 dark:text-white">
+                    <div className="text-xs font-black text-gray-900 dark:text-white leading-tight">
                       {formatCurrency(getTeamValue(item))}
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+                    <div className="text-[9px] font-medium text-gray-500 dark:text-gray-400 uppercase mb-1">
                       24h
                     </div>
-                    <div className={`text-base font-bold ${
+                    <div className={`text-xs font-black leading-tight ${
                       getTeamMarketIncrease(item) > 0
                         ? 'text-green-600 dark:text-green-400'
                         : getTeamMarketIncrease(item) < 0
