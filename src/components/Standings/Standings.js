@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { useNavigate } from 'react-router-dom';
@@ -274,19 +274,19 @@ const Standings = () => {
     return item.id || item.team?.id;
   };
 
-  const getTeamMarketIncrease = (item) => {
+  const getTeamMarketIncrease = useCallback((item) => {
     const teamId = getTeamId(item);
     return teamMarketIncreases.get(teamId) || 0;
-  };
+  }, [teamMarketIncreases]);
 
-  const getWeekPoints = (item) => {
+  const getWeekPoints = useCallback((item) => {
     const teamId = getTeamId(item);
     const weekPointsFromMap = teamWeekPoints.get(teamId);
     if (weekPointsFromMap !== undefined) {
       return weekPointsFromMap;
     }
     return item.weekPoints || item.team?.weekPoints || 0;
-  };
+  }, [teamWeekPoints]);
 
   // Handle column header click for sorting
   const handleSort = (column) => {
@@ -346,7 +346,7 @@ const Standings = () => {
 
       return sortOrder === 'asc' ? valueA - valueB : valueB - valueA;
     });
-  }, [standingsData, sortBy, sortOrder, teamMarketIncreases]);
+  }, [standingsData, sortBy, sortOrder, getTeamMarketIncrease, getWeekPoints]);
 
   // Guarded UI returns after hooks
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
