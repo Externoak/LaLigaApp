@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
-    image: laligaapp-backend:test
+    image: laligaapp-backend:latest
     restart: unless-stopped
     networks:
       - internal
@@ -19,7 +19,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
-    image: laligaapp-frontend:test
+    image: laligaapp-frontend:latest
     restart: unless-stopped
     depends_on:
       backend:
