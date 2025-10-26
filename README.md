@@ -127,6 +127,39 @@ npm run electron        # Build y ejecutar
 npm run build:electron  # Empaquetar para distribución
 ```
 
+## Docker
+
+### Prerequisitos
+- Docker
+- Docker Compose
+
+### Inicio rápido
+
+```bash
+docker-compose up --build
+```
+
+Acceso
+
+- Frontend: http://localhost:8080
+- Backend API: http://localhost:8080/api
+
+Build manual de imágenes
+
+```bash
+docker build -t laligaapp-backend:latest -f docker/Dockerfile.backend .
+docker build -t laligaapp-frontend:latest -f docker/Dockerfile.frontend .
+```
+
+Variables de entorno
+
+Backend:
+- APP_PORT - Puerto del servidor (default: 3005)
+
+Sobre tu comentario de reducir el tamaño del backend: con npm ci --only=production y el usuario no-root ya debería estar bastante optimizado. Si quieres ir más allá podrías usar una imagen distroless pero es opcional.
+
+Prueba los cambios a ver si funcionan bien y avísame si tienes dudas sobre algún punto.
+
 ## 🏗️ Estructura del proyecto
 
 ```
