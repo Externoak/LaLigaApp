@@ -23,7 +23,7 @@ import { invalidateAfterClausePurchase } from '../../utils/cacheInvalidation';
 const Clauses = () => {
   const { leagueId, user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [showAll, setShowAll] = useState(false);
+  const [availabilityFilter, setAvailabilityFilter] = useState('available'); // 'available', 'all', 'locked'
   const [clausesData, setClausesData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [trendsInitialized, setTrendsInitialized] = useState(false);
@@ -300,13 +300,13 @@ const Clauses = () => {
       }
 
       // If values are equal and we're showing all clauses, show available first as tie-breaker
-      if (comparison === 0 && showAll && a.isLocked !== b.isLocked) {
+      if (comparison === 0 && availabilityFilter === 'all' && a.isLocked !== b.isLocked) {
         return a.isLocked ? 1 : -1;
       }
 
       return sortOrder === 'asc' ? -comparison : comparison;
     });
-  }, [sortBy, sortOrder, showAll]);
+  }, [sortBy, sortOrder, availabilityFilter]);
 
   // Fetch all team data and extract clauses
   const fetchClausesData = useCallback(async (force = false) => {
@@ -493,7 +493,7 @@ const Clauses = () => {
       setClausesData(sortedData);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortBy, sortOrder, showAll, ownerFilter, positionFilter]);
+  }, [sortBy, sortOrder, availabilityFilter, ownerFilter, positionFilter]);
 
   const getPositionName = (positionId) => {
     const positions = {
@@ -519,7 +519,9 @@ const Clauses = () => {
   // Filter data based on settings
   const filteredClauses = clausesData.filter(clause => {
     // Filter by availability
-    if (!showAll && clause.isLocked) return false;
+    if (availabilityFilter === 'available' && clause.isLocked) return false;
+    if (availabilityFilter === 'locked' && !clause.isLocked) return false;
+    // if availabilityFilter === 'all', show everything
 
     // Filter by owner
     if (ownerFilter !== 'all' && clause.ownerName !== ownerFilter) return false;
@@ -542,7 +544,11 @@ const Clauses = () => {
             Cláusulas de Rescisión
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            {filteredClauses.length} cláusulas {showAll ? 'totales' : 'disponibles'}
+            {filteredClauses.length} cláusulas {
+              availabilityFilter === 'all' ? 'totales' 
+              : availabilityFilter === 'available' ? 'disponibles'
+              : 'bloqueadas'
+            }
             {ownerFilter !== 'all' && ` de ${ownerFilter}`}
             {positionFilter !== 'all' && ` - ${getPositionName(parseInt(positionFilter))}`}
             {clausesData.length > 0 && (
@@ -582,65 +588,61 @@ const Clauses = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {/* Show All Toggle */}
-          <div className="flex flex-col h-full" style={{minHeight: '160px'}}>
+          {/* Availability Filter */}
+          <div className="flex flex-col h-full">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Filtro de disponibilidad
             </label>
             <div className="space-y-2">
-              {/* Current Filter Status */}
+              {/* Current Availability Status */}
               <div className={`px-3 py-2 rounded-lg border-2 ${
-                showAll
-                  ? 'border-primary-200 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-800'
-                  : 'border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800'
+                availabilityFilter === 'available'
+                  ? 'border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800'
+                  : availabilityFilter === 'locked'
+                  ? 'border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800'
+                  : 'border-primary-200 bg-primary-50 dark:bg-primary-900/20 dark:border-primary-800'
               }`}>
                 <div className="flex items-center gap-2">
-                  {showAll ? (
-                    <Eye className="w-4 h-4 text-primary-600 dark:text-primary-400" />
-                  ) : (
+                  {availabilityFilter === 'available' ? (
                     <Shield className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  ) : availabilityFilter === 'locked' ? (
+                    <Clock className="w-4 h-4 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-primary-600 dark:text-primary-400" />
                   )}
                   <span className={`text-sm font-medium ${
-                    showAll 
-                      ? 'text-primary-700 dark:text-primary-300'
-                      : 'text-green-700 dark:text-green-300'
+                    availabilityFilter === 'available'
+                      ? 'text-green-700 dark:text-green-300'
+                      : availabilityFilter === 'locked'
+                      ? 'text-red-700 dark:text-red-300'
+                      : 'text-primary-700 dark:text-primary-300'
                   }`}>
-                    {showAll ? 'Todas las cláusulas' : 'Solo disponibles'}
+                    {availabilityFilter === 'available' ? 'Solo disponibles'
+                     : availabilityFilter === 'locked' ? 'Solo bloqueadas'
+                     : 'Todas las cláusulas'}
                   </span>
                 </div>
                 <div className={`text-xs mt-1 ${
-                  showAll
-                    ? 'text-primary-600 dark:text-primary-400'
-                    : 'text-green-600 dark:text-green-400'
+                  availabilityFilter === 'available'
+                    ? 'text-green-600 dark:text-green-400'
+                    : availabilityFilter === 'locked'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-primary-600 dark:text-primary-400'
                 }`}>
-                  {showAll
-                    ? `${filteredClauses.length} cláusulas en total`
-                    : `${filteredClauses.filter(c => !c.isLocked || (c.unlockTime && new Date(c.unlockTime) <= new Date())).length} cláusulas disponibles`
-                  }
+                  {filteredClauses.length} cláusulas
                 </div>
               </div>
 
-              {/* Toggle Button */}
-              <button
-                onClick={() => setShowAll(!showAll)}
-                className={`w-full flex items-center justify-start gap-2 px-3 py-2 rounded-lg font-medium transition-all duration-200 border-2 text-sm ${
-                  showAll
-                    ? 'border-green-300 bg-green-100 hover:bg-green-200 text-green-800 dark:border-green-600 dark:bg-green-900/30 dark:hover:bg-green-900/50 dark:text-green-200'
-                    : 'border-primary-300 bg-primary-100 hover:bg-primary-200 text-primary-800 dark:border-primary-600 dark:bg-primary-900/30 dark:hover:bg-primary-900/50 dark:text-primary-200'
-                }`}
+              {/* Availability Selector */}
+              <select
+                value={availabilityFilter}
+                onChange={(e) => setAvailabilityFilter(e.target.value)}
+                className="input-field w-full"
               >
-                {showAll ? (
-                  <>
-                    <Shield className="w-3 h-3" />
-                    <span>Solo disponibles</span>
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-3 h-3" />
-                    <span>Todas</span>
-                  </>
-                )}
-              </button>
+                <option value="available">🔓 Solo disponibles</option>
+                <option value="locked">🔒 Solo bloqueadas</option>
+                <option value="all">👁️ Todas las cláusulas</option>
+              </select>
             </div>
           </div>
 
@@ -889,12 +891,16 @@ const Clauses = () => {
             <div className="card p-12 text-center">
               <Shield className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                {showAll ? 'No hay cláusulas en la liga' : 'No hay cláusulas disponibles'}
+                {availabilityFilter === 'all' ? 'No hay cláusulas en la liga' 
+                 : availabilityFilter === 'available' ? 'No hay cláusulas disponibles'
+                 : 'No hay cláusulas bloqueadas'}
               </h3>
               <p className="text-gray-500 dark:text-gray-400">
-                {showAll ?
+                {availabilityFilter === 'all' ?
                   'No se encontraron jugadores con cláusulas de rescisión' :
-                  'Todas las cláusulas están actualmente bloqueadas'
+                  availabilityFilter === 'available' ?
+                  'Todas las cláusulas están actualmente bloqueadas' :
+                  'No hay cláusulas bloqueadas en este momento'
                 }
               </p>
             </div>
