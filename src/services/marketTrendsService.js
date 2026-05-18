@@ -83,8 +83,10 @@ class MarketTrendsService {
             // First, extract team mapping from select dropdown
             const teamMapping = this.extractTeamMapping(htmlText);
 
-            // Split HTML into individual player elements using a simpler approach
-            const playerElements = htmlText.split('class="elemento elemento_jugador');
+            // Split HTML into individual player elements.
+            // futbolfantasy.com renders each player as <tr class="elemento_jugador ...">
+            // (formerly "elemento elemento_jugador"). Match on the stable token.
+            const playerElements = htmlText.split('class="elemento_jugador');
 
             // Found potential player elements
 

@@ -216,12 +216,10 @@ api.interceptors.response.use(
         // Try to refresh token if available (and not already tried)
         if (authStore.tokens?.refresh_token && !error.config._tokenRefreshAttempted) {
           try {
-            // Mark that we attempted a refresh to prevent loops
+            // Mark guards before awaiting refresh; if refreshToken throws, the next 401 must not re-enter.
             error.config._tokenRefreshAttempted = true;
-            await authStore.refreshToken();
-
-            // Mark this request as a retry
             error.config._retry = true;
+            await authStore.refreshToken();
 
             // Update request with new token
             const newToken = authStore.getBearerToken();
@@ -394,6 +392,95 @@ function generateMockMatchStats() {
   return Promise.resolve({ data: mockMatches });
 }
 
+// ---------------------------------------------------------------------------
+// Response shape adapters
+//
+// In Nov 2025 the LaLiga Fantasy API retired /v4/players and
+// /v4/leagues/{id}/ranking. They are replaced by /v6/players (different
+// shape, no embedded team object, no name field) and /v1/leagues/{id}/standing
+// (different field names: `team.teamPoints` instead of `team.points`, no team
+// name anywhere). Rather than rewrite every caller, we normalize at the API
+// layer so the rest of the app keeps the legacy shape.
+// ---------------------------------------------------------------------------
+
+let teamsMasterPromise = null;
+const loadTeamsMaster = () => {
+  if (!teamsMasterPromise) {
+    teamsMasterPromise = api.get('/v3/teams-master?x-lang=es')
+      .then((res) => {
+        const teams = (res?.data?.teams) || [];
+        const map = new Map();
+        teams.forEach((t) => map.set(String(t.id), t));
+        return map;
+      })
+      .catch(() => new Map()); // graceful degradation
+  }
+  return teamsMasterPromise;
+};
+
+const normalizePlayer = (p, teamsMap) => {
+  if (!p || typeof p !== 'object') return p;
+  const teamId = p.teamId != null ? String(p.teamId) : (p.team && p.team.id != null ? String(p.team.id) : null);
+  const teamInfo = teamId && teamsMap ? teamsMap.get(teamId) : null;
+  const imageUrl = p.image || (p.images && p.images.transparent && p.images.transparent['256x256']) || null;
+  return {
+    ...p,
+    name: p.name || p.nickname,
+    team: p.team || (teamId ? {
+      id: teamId,
+      name: teamInfo ? teamInfo.name : undefined,
+      shortName: teamInfo ? teamInfo.shortName : undefined,
+      slug: teamInfo ? teamInfo.slug : undefined,
+      badgeColor: teamInfo ? teamInfo.badgeColor : undefined,
+      badgeWhite: teamInfo ? teamInfo.badgeWhite : undefined,
+    } : undefined),
+    images: p.images || (imageUrl ? { transparent: { '256x256': imageUrl }, player: imageUrl } : undefined),
+  };
+};
+
+const adaptPlayersResponse = async (response) => {
+  const list = Array.isArray(response?.data) ? response.data
+            : (response?.data?.elements && Array.isArray(response.data.elements) ? response.data.elements : null);
+  if (!list) return response;
+  const teamsMap = await loadTeamsMaster();
+  const normalized = list.map((p) => normalizePlayer(p, teamsMap));
+  return { ...response, data: Array.isArray(response.data) ? normalized : { ...response.data, elements: normalized } };
+};
+
+const normalizeStandingEntry = (entry) => {
+  if (!entry || typeof entry !== 'object') return entry;
+  const team = entry.team || {};
+  const manager = team.manager || {};
+  // Mirror new fields onto the legacy shape so callers reading either path keep working.
+  const adapted = {
+    ...entry,
+    id: entry.id ?? team.id,
+    name: entry.name ?? team.name,
+    points: entry.points ?? team.teamPoints ?? team.points,
+    teamValue: entry.teamValue ?? team.teamValue,
+    weekPoints: entry.weekPoints ?? team.weekPoints,
+    userId: entry.userId ?? manager.id,
+    manager: typeof entry.manager === 'string' ? entry.manager : manager.managerName,
+    team: {
+      ...team,
+      points: team.points ?? team.teamPoints,
+      manager: {
+        ...manager,
+        managerName: manager.managerName,
+      },
+    },
+  };
+  return adapted;
+};
+
+const adaptStandingResponse = (response) => {
+  const list = Array.isArray(response?.data) ? response.data
+            : (response?.data?.elements && Array.isArray(response.data.elements) ? response.data.elements : null);
+  if (!list) return response;
+  const normalized = list.map(normalizeStandingEntry);
+  return { ...response, data: Array.isArray(response.data) ? normalized : { ...response.data, elements: normalized } };
+};
+
 // Endpoints
 export const fantasyAPI = {
   // Usuario
@@ -401,7 +488,7 @@ export const fantasyAPI = {
 
   // Ligas
   getLeagues: () => api.get('/v4/leagues?x-lang=es'),
-  getLeagueRanking: (leagueId) => api.get(`/v4/leagues/${leagueId}/ranking?x-lang=es`),
+  getLeagueRanking: (leagueId) => api.get(`/v1/leagues/${leagueId}/standing?x-lang=es`).then(adaptStandingResponse),
   getLeagueRankingByWeek: (leagueId, week) => api.get(`/v5/leagues/${leagueId}/ranking/${week}?x-lang=es`),
   getLeagueActivity: (leagueId, index = 0) => api.get(`/v5/leagues/${leagueId}/activity/${index}?x-lang=es`),
 
@@ -430,7 +517,7 @@ export const fantasyAPI = {
   getMarket: (leagueId) => api.get(`/v3/league/${leagueId}/market?x-lang=es`),
 
   // Jugadores
-  getAllPlayers: () => api.get('/v4/players?x-lang=es'),
+  getAllPlayers: () => api.get('/v6/players?x-lang=es').then(adaptPlayersResponse),
 
   // Jornadas y Calendario
   getMatchday: (weekNumber) => api.get(`/v3/calendar?weekNumber=${weekNumber}&x-lang=es`),
@@ -496,7 +583,7 @@ export const fantasyAPI = {
   testConnection: () => api.get('/v4/leagues?x-lang=es'),
 
   // Clasificación (alias para getLeagueRanking)
-  getClassification: (leagueId) => api.get(`/v4/leagues/${leagueId}/ranking?x-lang=es`),
+  getClassification: (leagueId) => api.get(`/v1/leagues/${leagueId}/standing?x-lang=es`).then(adaptStandingResponse),
 
   // Información general de ligas (sin autenticación)
   getLeaguesPublic: () => {
@@ -529,7 +616,47 @@ export const fantasyAPI = {
 
   // Más endpoints según necesidades
   getPlayerDetails: (playerId, leagueId) => api.get(`/v4/player/${playerId}/league/${leagueId}?x-lang=es`),
-  getTeamDetails: (teamId) => api.get(`/v4/teams/${teamId}?x-lang=es`),
+
+  // Buyout clauses are not a first-class API resource; the official client
+  // derives them by walking every team's roster. Pattern mirrors Clauses.js.
+  getClauses: async (leagueId) => {
+    if (!leagueId) throw new Error('getClauses requires a leagueId');
+    const standingResp = await fantasyAPI.getLeagueRanking(leagueId);
+    const standings = Array.isArray(standingResp?.data) ? standingResp.data
+                    : (standingResp?.data?.elements || []);
+    const out = [];
+    for (const rankData of standings) {
+      const teamId = rankData.id || rankData.team?.id;
+      if (!teamId) continue;
+      try {
+        const teamResp = await fantasyAPI.getTeamData(leagueId, teamId);
+        const teamData = teamResp?.data || teamResp;
+        const players = teamData?.players || teamData?.data?.players || [];
+        for (const pt of players) {
+          if (!pt?.playerMaster || !pt.buyoutClause) continue;
+          const now = Date.now();
+          const unlockMs = pt.buyoutClauseLockedEndTime ? new Date(pt.buyoutClauseLockedEndTime).getTime() : 0;
+          const isLocked = unlockMs > now;
+          out.push({
+            playerId: pt.playerMaster.id,
+            playerTeamId: pt.playerTeamId || pt.id || pt.playerMaster.id,
+            teamId,
+            ownerName: rankData.name || rankData.team?.name || rankData.manager || rankData.team?.manager?.managerName,
+            buyoutClause: pt.buyoutClause,
+            clauseValue: pt.buyoutClause, // alias for legacy callers
+            value: pt.buyoutClause,
+            buyoutClauseLockedEndTime: pt.buyoutClauseLockedEndTime || null,
+            endDate: pt.buyoutClauseLockedEndTime || null,
+            isActive: !isLocked,
+            player: pt.playerMaster,
+          });
+        }
+      } catch {
+        // Skip teams we cannot fetch; continue the walk.
+      }
+    }
+    return { data: out };
+  },
 
   // Scraping de alineaciones probables desde futbolfantasy.com
   scrapeTeamLineup: async (teamSlug) => {

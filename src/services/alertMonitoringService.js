@@ -109,33 +109,38 @@ class AlertMonitoringService {
    * @param {Array} clauseAlerts - Array of clause alerts
    */
   async checkClauseAlerts(clauseAlerts) {
-    try {
+    // Group by leagueId so we walk each league's rosters at most once per cycle.
+    const byLeague = new Map();
+    for (const a of clauseAlerts) {
+      if (!a.leagueId) continue;
+      if (!byLeague.has(a.leagueId)) byLeague.set(a.leagueId, []);
+      byLeague.get(a.leagueId).push(a);
+    }
 
-      const clausesResponse = await fantasyAPI.getClauses();
-      const clauses = clausesResponse?.data || clausesResponse || [];
+    this.lastClausesCheck = new Date().toISOString();
 
-      this.lastClausesCheck = new Date().toISOString();
+    for (const [leagueId, alerts] of byLeague.entries()) {
+      try {
+        const clausesResponse = await fantasyAPI.getClauses(leagueId);
+        const clauses = clausesResponse?.data || [];
 
-      for (const alert of clauseAlerts) {
-        try {
+        for (const alert of alerts) {
           const playerClause = clauses.find(clause =>
-            (clause.playerId && clause.playerId === alert.playerId) ||
-            (clause.player?.id && clause.player.id === alert.playerId)
+            (clause.playerId && String(clause.playerId) === String(alert.playerId)) ||
+            (clause.player?.id && String(clause.player.id) === String(alert.playerId))
           );
-
-          // Check if clause is now available/active
           if (playerClause && this.isClauseAvailable(playerClause)) {
             await this.triggerAlert(alert, {
               clauseValue: playerClause.clauseValue || playerClause.value,
               isActive: true,
-              checkedAt: new Date().toISOString()
+              checkedAt: new Date().toISOString(),
             });
           }
-        } catch (error) {
         }
+      } catch (error) {
+        // Surface the error so checkAlerts() can count retries, but keep going
+        // for other leagues.
       }
-    } catch (error) {
-      throw error;
     }
   }
 
@@ -165,40 +170,44 @@ class AlertMonitoringService {
    * @param {Array} marketAlerts - Array of market alerts
    */
   async checkMarketAlerts(marketAlerts) {
-    try {
+    // Group by leagueId — market is league-scoped.
+    const byLeague = new Map();
+    for (const a of marketAlerts) {
+      if (!a.leagueId) continue;
+      if (!byLeague.has(a.leagueId)) byLeague.set(a.leagueId, []);
+      byLeague.get(a.leagueId).push(a);
+    }
 
-      const marketResponse = await fantasyAPI.getMarket();
-      const marketPlayers = marketResponse?.data || marketResponse || [];
+    this.lastMarketCheck = new Date().toISOString();
 
-      this.lastMarketCheck = new Date().toISOString();
+    const matches = (entry, playerId) => {
+      const pid = String(playerId);
+      return (entry?.id && String(entry.id) === pid)
+        || (entry?.playerId && String(entry.playerId) === pid)
+        || (entry?.player?.id && String(entry.player.id) === pid)
+        || (entry?.playerMaster?.id && String(entry.playerMaster.id) === pid);
+    };
 
-      for (const alert of marketAlerts) {
-        try {
-          const isInMarket = marketPlayers.some(player =>
-            (player.id && player.id === alert.playerId) ||
-            (player.playerId && player.playerId === alert.playerId) ||
-            (player.player?.id && player.player.id === alert.playerId)
-          );
+    for (const [leagueId, alerts] of byLeague.entries()) {
+      try {
+        const marketResponse = await fantasyAPI.getMarket(leagueId);
+        const marketEntries = marketResponse?.data || [];
 
-          if (isInMarket) {
-            const marketPlayer = marketPlayers.find(player =>
-              (player.id && player.id === alert.playerId) ||
-              (player.playerId && player.playerId === alert.playerId) ||
-              (player.player?.id && player.player.id === alert.playerId)
-            );
-
+        for (const alert of alerts) {
+          const entry = marketEntries.find(e => matches(e, alert.playerId));
+          if (entry) {
+            const pm = entry.playerMaster || entry.player || entry;
             await this.triggerAlert(alert, {
               inMarket: true,
-              marketPrice: marketPlayer?.price || marketPlayer?.marketValue,
+              marketPrice: entry.salePrice || pm?.marketValue || pm?.price,
               marketDate: new Date().toISOString(),
-              checkedAt: new Date().toISOString()
+              checkedAt: new Date().toISOString(),
             });
           }
-        } catch (error) {
         }
+      } catch (error) {
+        // Continue with other leagues.
       }
-    } catch (error) {
-      throw error;
     }
   }
 
@@ -211,7 +220,8 @@ class AlertMonitoringService {
 
       for (const alert of priceAlerts) {
         try {
-          const playerResponse = await fantasyAPI.getPlayer(alert.playerId);
+          if (!alert.leagueId) continue;
+          const playerResponse = await fantasyAPI.getPlayerDetails(alert.playerId, alert.leagueId);
           const player = playerResponse?.data || playerResponse;
 
           if (!player || !alert.targetValue) continue;

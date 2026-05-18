@@ -267,20 +267,16 @@ export const useAlertStore = create(
       // Check clause availability
       checkClauseAlert: async (alert) => {
         try {
-          const clausesResponse = await fantasyAPI.getClauses();
-          const clauses = clausesResponse?.data || clausesResponse || [];
-          
-          // Check if player's clause is now available
-          const playerClause = clauses.find(clause => 
-            clause.playerId === alert.playerId || 
-            clause.player?.id === alert.playerId
+          if (!alert.leagueId) return false;
+          const clausesResponse = await fantasyAPI.getClauses(alert.leagueId);
+          const clauses = clausesResponse?.data || [];
+
+          const playerClause = clauses.find(clause =>
+            String(clause.playerId) === String(alert.playerId) ||
+            String(clause.player?.id) === String(alert.playerId)
           );
 
-          if (playerClause && playerClause.isActive !== false) {
-            return true;
-          }
-
-          return false;
+          return Boolean(playerClause && playerClause.isActive !== false);
         } catch (error) {
           return false;
         }
@@ -289,16 +285,17 @@ export const useAlertStore = create(
       // Check market listing
       checkMarketAlert: async (alert) => {
         try {
-          const marketResponse = await fantasyAPI.getMarket();
-          const marketPlayers = marketResponse?.data || marketResponse || [];
-          
-          // Check if player is in today's market
-          const isInMarket = marketPlayers.some(player => 
-            player.id === alert.playerId || 
-            player.playerId === alert.playerId
-          );
+          if (!alert.leagueId) return false;
+          const marketResponse = await fantasyAPI.getMarket(alert.leagueId);
+          const marketEntries = marketResponse?.data || [];
 
-          return isInMarket;
+          const pid = String(alert.playerId);
+          return marketEntries.some(entry =>
+            String(entry?.id) === pid ||
+            String(entry?.playerId) === pid ||
+            String(entry?.player?.id) === pid ||
+            String(entry?.playerMaster?.id) === pid
+          );
         } catch (error) {
           return false;
         }
@@ -307,7 +304,8 @@ export const useAlertStore = create(
       // Check price change
       checkPriceAlert: async (alert) => {
         try {
-          const playerResponse = await fantasyAPI.getPlayer(alert.playerId);
+          if (!alert.leagueId) return false;
+          const playerResponse = await fantasyAPI.getPlayerDetails(alert.playerId, alert.leagueId);
           const player = playerResponse?.data || playerResponse;
           
           if (!player || !alert.targetValue) return false;

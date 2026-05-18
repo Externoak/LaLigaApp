@@ -4,6 +4,10 @@ import authService from '../services/authService';
 import tokenPersistenceService from '../services/tokenPersistence';
 import SecureTokenManager from '../utils/SecureTokenManager';
 
+// In-flight refresh memoization: concurrent callers share the same promise
+// to prevent N parallel 401s from firing N refresh requests.
+let inflightRefresh = null;
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -390,84 +394,92 @@ export const useAuthStore = create(
 
       // Refresh access token using refresh token
       refreshToken: async () => {
-        const state = get();
-        const refreshTokenValue = state.tokens?.refresh_token;
-
-        // Token refresh process starting
-
-        if (!refreshTokenValue) {
-          throw new Error('No refresh token available');
-        }
-
-        // Check if tokens are actually expired before refreshing
-        if (!authService.isTokenExpired(state.tokens)) {
-          return state.tokens.access_token;
-        }
-
-        try {
-          const result = await authService.refreshToken(refreshTokenValue);
-
-          // Update tokens with new data (prioritize id_token like the bot)
-          const newTokens = {
-            ...state.tokens,
-            // Use id_token as primary token (like bot_original.js does)
-            access_token: result.id_token || result.access_token,
-            id_token: result.id_token,
-            // Keep new refresh token if provided, otherwise keep the existing one
-            refresh_token: result.refresh_token || state.tokens.refresh_token,
-            expires_in: result.id_token_expires_in || result.expires_in || 86400,
-            expires_on: authService.calculateTokenExpiration({
-              id_token_expires_in: result.id_token_expires_in,
-              expires_in: result.expires_in
-            }),
-            // Store additional fields from LaLiga response
-            id_token_expires_in: result.id_token_expires_in,
-            refresh_token_expires_in: result.refresh_token_expires_in
-          };
-
-          // Update localStorage and state
-          localStorage.setItem('laliga_tokens', JSON.stringify(newTokens));
+        if (inflightRefresh) return inflightRefresh;
+        inflightRefresh = (async () => {
           try {
-            if (newTokens.access_token) {
-              const encrypted = await SecureTokenManager.encryptToken(newTokens.access_token);
-              if (encrypted) {
-                localStorage.setItem('auth_token_encrypted', JSON.stringify(encrypted));
-              }
+            const state = get();
+            const refreshTokenValue = state.tokens?.refresh_token;
+
+            // Token refresh process starting
+
+            if (!refreshTokenValue) {
+              throw new Error('No refresh token available');
             }
-          } catch {}
 
-          set({
-            tokens: newTokens,
-            isAuthenticated: true  // Ensure isAuthenticated stays true after refresh
-          });
+            // Check if tokens are actually expired before refreshing
+            if (!authService.isTokenExpired(state.tokens)) {
+              return state.tokens.access_token;
+            }
 
-          // Update persistent storage with refreshed tokens
-          try {
-            await tokenPersistenceService.saveTokens(newTokens, get().user);
-          } catch (persistError) {
+            try {
+              const result = await authService.refreshToken(refreshTokenValue);
+
+              // Update tokens with new data (prioritize id_token like the bot)
+              const newTokens = {
+                ...state.tokens,
+                // Use id_token as primary token (like bot_original.js does)
+                access_token: result.id_token || result.access_token,
+                id_token: result.id_token,
+                // Keep new refresh token if provided, otherwise keep the existing one
+                refresh_token: result.refresh_token || state.tokens.refresh_token,
+                expires_in: result.id_token_expires_in || result.expires_in || 86400,
+                expires_on: authService.calculateTokenExpiration({
+                  id_token_expires_in: result.id_token_expires_in,
+                  expires_in: result.expires_in
+                }),
+                // Store additional fields from LaLiga response
+                id_token_expires_in: result.id_token_expires_in,
+                refresh_token_expires_in: result.refresh_token_expires_in
+              };
+
+              // Update localStorage and state
+              localStorage.setItem('laliga_tokens', JSON.stringify(newTokens));
+              try {
+                if (newTokens.access_token) {
+                  const encrypted = await SecureTokenManager.encryptToken(newTokens.access_token);
+                  if (encrypted) {
+                    localStorage.setItem('auth_token_encrypted', JSON.stringify(encrypted));
+                  }
+                }
+              } catch {}
+
+              set({
+                tokens: newTokens,
+                isAuthenticated: true  // Ensure isAuthenticated stays true after refresh
+              });
+
+              // Update persistent storage with refreshed tokens
+              try {
+                await tokenPersistenceService.saveTokens(newTokens, get().user);
+              } catch (persistError) {
+              }
+
+              return newTokens.access_token;
+            } catch (error) {
+
+              // Check if the error is due to invalid_grant (expired/invalid refresh token)
+              if (error.message && error.message.includes('invalid_grant')) {
+                // Remove the invalid refresh token but don't logout immediately
+                const tokensWithoutRefresh = { ...state.tokens };
+                delete tokensWithoutRefresh.refresh_token;
+                localStorage.setItem('laliga_tokens', JSON.stringify(tokensWithoutRefresh));
+                set({
+                  tokens: tokensWithoutRefresh,
+                  isAuthenticated: true  // Keep user authenticated even without refresh token
+                });
+
+                throw new Error('Refresh token is expired or invalid. Please login again when your session expires.');
+              }
+
+              // For other errors, logout user
+              get().logout();
+              throw error;
+            }
+          } finally {
+            inflightRefresh = null;
           }
-
-          return newTokens.access_token;
-        } catch (error) {
-
-          // Check if the error is due to invalid_grant (expired/invalid refresh token)
-          if (error.message && error.message.includes('invalid_grant')) {
-            // Remove the invalid refresh token but don't logout immediately
-            const tokensWithoutRefresh = { ...state.tokens };
-            delete tokensWithoutRefresh.refresh_token;
-            localStorage.setItem('laliga_tokens', JSON.stringify(tokensWithoutRefresh));
-            set({
-              tokens: tokensWithoutRefresh,
-              isAuthenticated: true  // Keep user authenticated even without refresh token
-            });
-
-            throw new Error('Refresh token is expired or invalid. Please login again when your session expires.');
-          }
-
-          // For other errors, logout user
-          get().logout();
-          throw error;
-        }
+        })();
+        return inflightRefresh;
       },
 
       // Check if token is expired or about to expire
