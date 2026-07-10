@@ -2,9 +2,12 @@ import React, { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, ShoppingCart, Shield, TrendingUp, Clock, Lock, Euro, Calendar } from 'lucide-react';
+import { Activity, Clock, Calendar, UserPlus } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
-import { formatCurrency, timeAgo } from '../../utils/helpers';
+import { formatCurrency, timeAgo, setImageFallback, extractArray } from '../../utils/helpers';
+import { fetchAllTeamsData } from '../../utils/fetchAllTeamsData';
+import { getActivityIcon, getActivityColor, buildManagersCache, buildPlayersCache, resolveActivityPlayer, logUnknownActivityType } from '../Activity/activityUtils';
+import { useActivityPlayerNames } from '../../hooks/useActivityPlayerNames';
 import LoadingSpinner from '../Common/LoadingSpinner';
 
 const RecentActivity = ({ leagueId }) => {
@@ -27,47 +30,26 @@ const RecentActivity = ({ leagueId }) => {
     gcTime: 30 * 60 * 1000, // 30 minutos
   });
 
-  // Fetch players data for resolving player IDs
-  const { data: players } = useQuery({
-    queryKey: ['players'],
+  // Fetch players data for resolving player IDs (shared 'allPlayers' cache)
+  const { data: players, isSuccess: playersLoaded } = useQuery({
+    queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
   });
 
   // Memoize standings data to prevent re-fetches
-  const standingsData = useMemo(() => {
-    if (!ranking) return [];
-    return Array.isArray(ranking) ? ranking : ranking?.data || ranking?.elements || [];
-  }, [ranking]);
+  const standingsData = useMemo(() => extractArray(ranking), [ranking]);
 
   // Fetch all teams data to get buyout clause information
   const { data: allTeamsData } = useQuery({
     queryKey: ['allTeamsData', leagueId, standingsData.length],
     queryFn: async () => {
-      if (standingsData.length === 0) return {};
-
+      const teamsMap = await fetchAllTeamsData(queryClient, leagueId, standingsData, { limit: 10 });
       const teamsData = {};
-
-      // Fetch team data sequentially with cache and delay to avoid 429
-      for (const team of standingsData.slice(0, 10)) {
-        try {
-          const teamId = team.id || team.team?.id;
-          if (teamId) {
-            const teamData = await queryClient.fetchQuery({
-              queryKey: ['teamData', leagueId, teamId],
-              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
-              staleTime: 15 * 60 * 1000, // 15 minutos
-              gcTime: 30 * 60 * 1000, // 30 minutos
-            });
-            teamsData[teamId] = teamData;
-            // Small delay to avoid rate limiting
-            await new Promise(resolve => setTimeout(resolve, 150));
-          }
-        } catch (error) {
-          // Ignore team data fetch errors
-        }
+      for (const [teamId, { teamData }] of teamsMap) {
+        teamsData[teamId] = teamData;
       }
-
       return teamsData;
     },
     enabled: !!leagueId && rankingLoaded && standingsData.length > 0,
@@ -75,61 +57,31 @@ const RecentActivity = ({ leagueId }) => {
     retry: 1,
   });
 
-  const getActivityIcon = (type, item = null) => {
-    // Handle both activityTypeId (real API) and type (mock data)
-    const activityType = type || (type === 'market' ? 1 : type === 'transfer' ? 31 : 1);
+  // Memoizados: se reconstruyen solo cuando cambia la respuesta, no en cada
+  // render (players son ~3000 entradas).
+  const managersCache = useMemo(() => buildManagersCache(ranking), [ranking]);
+  const playersCache = useMemo(() => buildPlayersCache(players), [players]);
 
-    // Check if this is a dynamic clausuló (purchase converted to clause)
-    if (item && activityType === 1 && getActivityText(item) === 'clausuló') {
-      return <Lock className="w-4 h-4" />;
+  // Manejar diferentes estructuras de respuesta de la API
+  const activityData = useMemo(() => {
+    if (Array.isArray(activity)) return activity;
+    if (activity?.data && Array.isArray(activity.data)) return activity.data;
+    if (activity?.elements && Array.isArray(activity.elements)) return activity.elements;
+    if (activity && typeof activity === 'object') {
+      // Si es un objeto, buscar la primera propiedad que sea un array
+      const arrayProperty = Object.values(activity).find(val => Array.isArray(val));
+      if (arrayProperty) return arrayProperty;
     }
+    return [];
+  }, [activity]);
 
-    switch (activityType) {
-      case 1:
-      case 31:
-        return <ShoppingCart className="w-4 h-4" />;
-      case 4:
-        return <Shield className="w-4 h-4" />;
-      case 6:
-        return <Euro className="w-4 h-4" />;
-      case 7:
-        return <Calendar className="w-4 h-4" />;
-      case 32:
-        return <Shield className="w-4 h-4" />;
-      case 33:
-        return <TrendingUp className="w-4 h-4" />;
-      default:
-        return <Activity className="w-4 h-4" />;
-    }
-  };
+  // Jugadores referenciados por la actividad pero ausentes de ['allPlayers']
+  // (pretemporada): se resuelven bajo demanda por id.
+  const resolvedPlayers = useActivityPlayerNames(activityData, playersCache, leagueId, playersLoaded);
 
-  const getActivityColor = (type, item = null) => {
-    // Handle both activityTypeId (real API) and type (mock data)
-    const activityType = type || (type === 'market' ? 1 : type === 'transfer' ? 31 : 1);
-
-    // Check if this is a dynamic clausuló (purchase converted to clause)
-    if (item && activityType === 1 && getActivityText(item) === 'clausuló') {
-      return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
-    }
-
-    switch (activityType) {
-      case 1:
-      case 31:
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
-      case 4:
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
-      case 6:
-        return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
-      case 7:
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      case 32:
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
-      case 33:
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
-    }
-  };
+  // Cláusula dinámica: compra cuyo importe coincide con la cláusula actual
+  const isDynamicClause = (item) =>
+    (item.activityTypeId || 1) === 1 && getActivityText(item) === 'clausuló';
 
   // Get seller/previous owner name from activity data
   const getSellerName = (item) => {
@@ -159,6 +111,7 @@ const RecentActivity = ({ leagueId }) => {
       4: 'blindó',
       6: 'ha ganado por jornada',
       7: 'no ha puntuado debido a alineación incorrecta',
+      9: 'se ha unido a la liga',
       31: 'fichó',
       32: 'clausuló',
       33: 'vendió',
@@ -174,6 +127,11 @@ const RecentActivity = ({ leagueId }) => {
     // Handle activityTypeId 7 - incorrect lineup
     if (activityType === 7) {
       return 'no ha puntuado debido a alineación incorrecta';
+    }
+
+    // Handle activityTypeId 9 - new league member (no player involved)
+    if (activityType === 9) {
+      return 'se ha unido a la liga';
     }
 
     // Special case for earnings activity (legacy format - when player info is missing but amount exists)
@@ -195,7 +153,9 @@ const RecentActivity = ({ leagueId }) => {
 
     }
 
-    return actions[activityType] || 'realizó una acción';
+    const text = actions[activityType];
+    if (!text) logUnknownActivityType(item);
+    return text || 'realizó una acción';
   };
 
   const getFullActivityDescription = (item) => {
@@ -219,8 +179,9 @@ const RecentActivity = ({ leagueId }) => {
       </span>
     );
 
-    // Create clickable player name
-    const clickablePlayerName = (
+    // Create clickable player name (null cuando el item no tiene jugador
+    // resoluble: los formatos de abajo omiten entonces el "a {jugador}")
+    const clickablePlayerName = playerName ? (
       <span
         className="text-green-600 dark:text-green-400 underline cursor-pointer hover:text-green-800 dark:hover:text-green-300"
         onClick={(e) => {
@@ -230,7 +191,7 @@ const RecentActivity = ({ leagueId }) => {
       >
         {playerName}
       </span>
-    );
+    ) : null;
 
     // Create clickable seller name if exists
     const clickableSellerName = sellerName ? (
@@ -264,6 +225,15 @@ const RecentActivity = ({ leagueId }) => {
       );
     }
 
+    // Handle activityTypeId 9 - new league member (no player, no amount)
+    if (activityType === 9) {
+      return (
+        <span>
+          {clickableUserName} se ha unido a la liga
+        </span>
+      );
+    }
+
     // For earnings (legacy format - no player involved)
     if (amount && !item.playerMasterId && !item.playerName && !item.player) {
       return (
@@ -277,7 +247,7 @@ const RecentActivity = ({ leagueId }) => {
     if (sellerName && amount && (item.activityTypeId === 1 || item.activityTypeId === 31)) {
       return (
         <span>
-          {clickableUserName} {actionText} a {clickablePlayerName} por {formatCurrency(Math.abs(amount))} a {clickableSellerName}
+          {clickableUserName} {actionText}{clickablePlayerName ? <> a {clickablePlayerName}</> : null} por {formatCurrency(Math.abs(amount))} a {clickableSellerName}
         </span>
       );
     }
@@ -286,7 +256,7 @@ const RecentActivity = ({ leagueId }) => {
     if (amount && activityType !== 7) {
       return (
         <span>
-          {clickableUserName} {actionText} a {clickablePlayerName} por {formatCurrency(Math.abs(amount))}
+          {clickableUserName} {actionText}{clickablePlayerName ? <> a {clickablePlayerName}</> : null} por {formatCurrency(Math.abs(amount))}
         </span>
       );
     }
@@ -294,63 +264,10 @@ const RecentActivity = ({ leagueId }) => {
     // Basic format without amount
     return (
       <span>
-        {clickableUserName} {actionText} a {clickablePlayerName}
+        {clickableUserName} {actionText}{clickablePlayerName ? <> a {clickablePlayerName}</> : null}
       </span>
     );
   };
-
-  // Build managers cache from ranking data (like the bot does)
-  const buildManagersCache = (rankingData) => {
-    const managersMap = new Map();
-    if (!rankingData) return managersMap;
-
-    let standings = [];
-    if (Array.isArray(rankingData)) {
-      standings = rankingData;
-    } else if (rankingData.data && Array.isArray(rankingData.data)) {
-      standings = rankingData.data;
-    } else if (rankingData.elements && Array.isArray(rankingData.elements)) {
-      standings = rankingData.elements;
-    }
-
-    standings.forEach(data => {
-      if (data.team && data.team.manager && data.team.id) {
-        managersMap.set(data.team.manager.id.toString(), {
-          managerId: data.team.manager.id,
-          managerName: data.team.manager.managerName,
-          teamId: data.team.id
-        });
-      }
-    });
-
-    return managersMap;
-  };
-
-  // Build players cache from players data
-  const buildPlayersCache = (playersData) => {
-    const playersMap = new Map();
-    if (!playersData) return playersMap;
-
-    let playersList = [];
-    if (Array.isArray(playersData)) {
-      playersList = playersData;
-    } else if (playersData.data && Array.isArray(playersData.data)) {
-      playersList = playersData.data;
-    } else if (playersData.elements && Array.isArray(playersData.elements)) {
-      playersList = playersData.elements;
-    }
-
-    playersList.forEach(player => {
-      if (player.id) {
-        playersMap.set(player.id.toString(), player);
-      }
-    });
-
-    return playersMap;
-  };
-
-  const managersCache = buildManagersCache(ranking);
-  const playersCache = buildPlayersCache(players);
 
   // Helper function to get team ID for a user
   const getTeamIdForUser = (userName) => {
@@ -440,26 +357,12 @@ const RecentActivity = ({ leagueId }) => {
     return 'Usuario';
   };
 
-  const getPlayerName = (item) => {
-    // Priority: playerName (if resolved), then lookup by playerMasterId, then player (mock), then fallback
-    if (item.playerName) return item.playerName;
+  // Nombre del jugador o null si el item no referencia a ninguno reconocible
+  // (nunca mostrar la palabra literal "jugador").
+  const getPlayerName = (item) => resolveActivityPlayer(item, playersCache, resolvedPlayers).name;
 
-    if (item.playerMasterId && playersCache.has(item.playerMasterId.toString())) {
-      const player = playersCache.get(item.playerMasterId.toString());
-      return player.nickname || player.name || 'jugador';
-    }
-
-    if (item.player) return item.player;
-    return 'jugador';
-  };
-
-  const getPlayerData = (item) => {
-    // Return full player data for image and other info
-    if (item.playerMasterId && playersCache.has(item.playerMasterId.toString())) {
-      return playersCache.get(item.playerMasterId.toString());
-    }
-    return null;
-  };
+  // Return full player data for image and other info
+  const getPlayerData = (item) => resolveActivityPlayer(item, playersCache, resolvedPlayers).player;
 
   const getPlayerImage = (item) => {
     const player = getPlayerData(item);
@@ -474,22 +377,6 @@ const RecentActivity = ({ leagueId }) => {
   };
 
   if (isLoading) return <LoadingSpinner />;
-
-  // Manejar diferentes estructuras de respuesta de la API
-  let activityData = [];
-  if (Array.isArray(activity)) {
-    activityData = activity;
-  } else if (activity?.data && Array.isArray(activity.data)) {
-    activityData = activity.data;
-  } else if (activity?.elements && Array.isArray(activity.elements)) {
-    activityData = activity.elements;
-  } else if (activity && typeof activity === 'object') {
-    // Si es un objeto, buscar la primera propiedad que sea un array
-    const arrayProperty = Object.values(activity).find(val => Array.isArray(val));
-    if (arrayProperty) {
-      activityData = arrayProperty;
-    }
-  }
 
   const recentItems = showAll ? activityData.slice(0, 50) : activityData.slice(0, 10);
 
@@ -528,22 +415,29 @@ const RecentActivity = ({ leagueId }) => {
                   <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-red-200 dark:border-red-700 bg-red-100 dark:bg-red-800 flex items-center justify-center">
                     <Calendar className="text-red-600 dark:text-red-400 w-5 h-5 sm:w-8 sm:h-8" />
                   </div>
+                ) : (item.activityTypeId === 9) ? (
+                  <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-indigo-200 dark:border-indigo-700 bg-indigo-100 dark:bg-indigo-800 flex items-center justify-center">
+                    <UserPlus className="text-indigo-600 dark:text-indigo-400 w-5 h-5 sm:w-8 sm:h-8" />
+                  </div>
                 ) : getPlayerImage(item) ? (
                   <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white shadow-md">
                     <img
                       src={getPlayerImage(item)}
-                      alt={getPlayerName(item)}
+                      alt={getPlayerName(item) || 'Jugador'}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.parentNode.innerHTML = `<div class="w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm sm:text-lg font-semibold">${getPlayerName(item).charAt(0).toUpperCase()}</div>`;
+                        setImageFallback(e.target.parentNode, {
+                          className: 'w-full h-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 text-sm sm:text-lg font-semibold',
+                          text: (getPlayerName(item) || '?').charAt(0).toUpperCase(),
+                        });
                       }}
                     />
                   </div>
                 ) : (
                   <div className="w-12 h-12 sm:w-20 sm:h-20 rounded-full border-2 border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                     <span className="text-gray-500 dark:text-gray-400 text-base sm:text-xl font-semibold">
-                      {getPlayerName(item).charAt(0).toUpperCase()}
+                      {(getPlayerName(item) || '?').charAt(0).toUpperCase()}
                     </span>
                   </div>
                 )}
@@ -551,8 +445,8 @@ const RecentActivity = ({ leagueId }) => {
 
               {/* Activity Icon - Responsive size */}
               <div className="flex-shrink-0">
-                <div className={`p-1.5 sm:p-2 rounded-full ${getActivityColor(item.activityTypeId || item.type, item)} shadow-sm`}>
-                  {getActivityIcon(item.activityTypeId || item.type, item)}
+                <div className={`p-1.5 sm:p-2 rounded-full ${getActivityColor(item.activityTypeId || 1, isDynamicClause(item))} shadow-sm`}>
+                  {getActivityIcon(item.activityTypeId || 1, isDynamicClause(item), 'w-4 h-4')}
                 </div>
               </div>
 

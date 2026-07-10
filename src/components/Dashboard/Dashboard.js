@@ -6,16 +6,21 @@ import {
 } from 'lucide-react';
 import {fantasyAPI} from '../../services/api';
 import {useAuthStore} from '../../stores/authStore';
-import {formatCurrency, formatNumber, formatCurrencyWithSign} from '../../utils/helpers';
+import {useCurrentWeek} from '../../hooks/useCurrentWeek';
+import {formatCurrency, formatNumber, formatCurrencyWithSign, extractArray} from '../../utils/helpers';
 import StatsCard from '../Common/StatsCard';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
 import RecentActivity from './RecentActivity';
 import LeagueStandings from './LeagueStandings';
 import UpcomingMatches from './UpcomingMatches';
+import LineupRiskBanner from './LineupRiskBanner';
+import LiveTeamPoints from './LiveTeamPoints';
 
 const Dashboard = () => {
-    const {leagueId, leagueName, user} = useAuthStore();
+    const leagueId = useAuthStore((state) => state.leagueId);
+    const leagueName = useAuthStore((state) => state.leagueName);
+    const user = useAuthStore((state) => state.user);
 
     const {data: standings, isLoading: loadingStandings, error: standingsError, refetch: refetchStandings} = useQuery({
         queryKey: ['standings', leagueId],
@@ -27,23 +32,10 @@ const Dashboard = () => {
     });
 
 
-    const {data: currentWeek, error: weekError, refetch: refetchWeek} = useQuery({
-        queryKey: ['currentWeek'],
-        queryFn: () => fantasyAPI.getCurrentWeek(),
-        retry: false,
-        staleTime: 30 * 60 * 1000, // 30 minutos - la jornada actual no cambia frecuentemente
-        gcTime: 60 * 60 * 1000, // 1 hora en caché
-    });
+    const {weekNumber: currentWeekNumber, error: weekError, refetch: refetchWeek} = useCurrentWeek();
 
     // Extract standings data from different API response structures
-    let standingsData = [];
-    if (Array.isArray(standings)) {
-        standingsData = standings;
-    } else if (standings?.data && Array.isArray(standings.data)) {
-        standingsData = standings.data;
-    } else if (standings?.elements && Array.isArray(standings.elements)) {
-        standingsData = standings.elements;
-    }
+    const standingsData = extractArray(standings);
 
     // Find current user's team by matching user ID
     const myTeam = standingsData.find(item => {
@@ -57,12 +49,9 @@ const Dashboard = () => {
     });
 
     const {data: matches} = useQuery({
-        queryKey: ['matches', currentWeek?.data?.weekNumber || currentWeek?.weekNumber],
-        queryFn: () => {
-            const weekNumber = currentWeek?.data?.weekNumber || currentWeek?.weekNumber;
-            return fantasyAPI.getMatchday(weekNumber);
-        },
-        enabled: !!(currentWeek?.data?.weekNumber || currentWeek?.weekNumber),
+        queryKey: ['matches', currentWeekNumber],
+        queryFn: () => fantasyAPI.getMatchday(currentWeekNumber),
+        enabled: !!currentWeekNumber,
         retry: false,
         staleTime: 15 * 60 * 1000, // 15 minutos - partidos cambian poco una vez programados
         gcTime: 30 * 60 * 1000, // 30 minutos
@@ -167,7 +156,7 @@ const Dashboard = () => {
                         <span className="hidden sm:inline">Actualizar</span>
                     </button>
           <span className="badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-            Jornada actual {currentWeek?.data?.weekNumber || currentWeek?.weekNumber || '1'}
+            Jornada actual {currentWeekNumber || '1'}
           </span>
                 </div>
             </div>
@@ -195,6 +184,16 @@ const Dashboard = () => {
                     ))
                 )}
             </div>
+
+            {/* Aviso de alineación en riesgo (solo aparece si hay riesgos) */}
+            <LineupRiskBanner teamId={myTeam?.teamId || myTeam?.team?.id} />
+
+            {/* Puntos en vivo (solo durante partidos de la jornada) */}
+            <LiveTeamPoints
+                teamId={myTeam?.teamId || myTeam?.team?.id}
+                matches={matches}
+                weekNumber={currentWeekNumber}
+            />
 
             {/* Main Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

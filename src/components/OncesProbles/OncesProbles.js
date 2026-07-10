@@ -21,7 +21,7 @@ const OncesProbles = () => {
   const lastFetchedOpponentRef = useRef(null);
 
   // Use shared hook for current week
-  const { data: currentWeek } = useCurrentWeek();
+  const { weekNumber: currentWeekNumber } = useCurrentWeek();
 
   // Get available teams from the service (memoized to prevent infinite loops)
   const teams = useMemo(() => oncesProbabesService.getAvailableTeams(), []);
@@ -71,7 +71,7 @@ const OncesProbles = () => {
       const normalizeString = (str) => str?.trim().normalize('NFKD').replace(/[̀-ͯ]/g, '');
 
       // Get current week number
-      const weekNumber = currentWeek?.data?.weekNumber || currentWeek?.weekNumber || 1;
+      const weekNumber = currentWeekNumber || 1;
       let nextWeek = weekNumber;
       const collectedMatches = [];
 
@@ -141,7 +141,7 @@ const OncesProbles = () => {
     } catch (error) {
       setUpcomingOpponents([]);
     }
-  }, [teams, currentWeek]);
+  }, [teams, currentWeekNumber]);
 
   const loadTeamLineup = useCallback(async (teamSlug) => {
     // Prevent multiple simultaneous requests for the same team
@@ -188,17 +188,17 @@ const OncesProbles = () => {
     loadTeamLineup(selectedTeam);
   }, [selectedTeam, playersData, loadTeamLineup]);
 
-  // currentWeek is now loaded automatically via the hook
+  // currentWeekNumber is now loaded automatically via the hook
 
   useEffect(() => {
-    if (selectedTeam && currentWeek) {
-      const fetchKey = `${selectedTeam}-${currentWeek?.data?.weekNumber || currentWeek?.weekNumber}`;
+    if (selectedTeam && currentWeekNumber) {
+      const fetchKey = `${selectedTeam}-${currentWeekNumber}`;
       if (lastFetchedOpponentRef.current !== fetchKey) {
         lastFetchedOpponentRef.current = fetchKey;
         fetchUpcomingOpponents(selectedTeam);
       }
     }
-  }, [selectedTeam, currentWeek, fetchUpcomingOpponents]);
+  }, [selectedTeam, currentWeekNumber, fetchUpcomingOpponents]);
 
   useEffect(() => {
     // Update cache stats periodically
@@ -250,10 +250,12 @@ const OncesProbles = () => {
           {/* Actions */}
           <div className="flex items-center gap-2 justify-end sm:justify-start">
             <button
+              type="button"
               onClick={handleRefresh}
               disabled={loading}
               className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
               title="Actualizar datos"
+              aria-label="Actualizar datos"
             >
               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
             </button>

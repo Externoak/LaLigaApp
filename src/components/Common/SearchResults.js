@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from '../../utils/motionShim';
 import { Users, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { setImageFallback } from '../../utils/helpers';
 
 const SearchResults = ({ results, query, isVisible, onClose }) => {
   const navigate = useNavigate();
@@ -41,7 +42,9 @@ const SearchResults = ({ results, query, isVisible, onClose }) => {
             Resultados para "{query}"
           </h3>
           <button
+            type="button"
             onClick={onClose}
+            aria-label="Cerrar resultados de búsqueda"
             className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
           >
             <X className="w-4 h-4 text-gray-500" />
@@ -129,7 +132,11 @@ const SearchResults = ({ results, query, isVisible, onClose }) => {
                             className="w-8 h-8 rounded-full object-cover border border-gray-200 dark:border-gray-600"
                             onError={(e) => {
                               e.target.style.display = 'none';
-                              e.target.parentNode.innerHTML = `<div class="w-8 h-8 bg-gradient-to-br from-primary-300 to-primary-500 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600"><span class="text-xs font-bold text-white">${player.name.charAt(0).toUpperCase()}</span></div>`;
+                              setImageFallback(e.target.parentNode, {
+                                className: 'w-8 h-8 bg-gradient-to-br from-primary-300 to-primary-500 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-600',
+                                textClassName: 'text-xs font-bold text-white',
+                                text: player.name.charAt(0).toUpperCase(),
+                              });
                             }}
                           />
                         ) : (

@@ -1,53 +1,88 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useTransition, useSpring, animated } from '@react-spring/web';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { motion, AnimatePresence } from '../../utils/motionShim';
 import useBodyScrollLock from '../../utils/useBodyScrollLock';
 import { createPortal } from 'react-dom';
-import { X, Trophy, TrendingUp, Calendar, Star, User, MapPin } from 'lucide-react';
+import { X, Trophy, TrendingUp, Calendar, Star, User, MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from './LoadingSpinner';
 import QuickAlertButton from './QuickAlertButton';
 import { useCurrentWeek } from '../../hooks/useCurrentWeek';
+import { formatCurrencyCompact } from '../../utils/helpers';
 
 const PlayerDetailModal = ({ isOpen, onClose, player }) => {
-  const [playerData, setPlayerData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [nextOpponent, setNextOpponent] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
-  const { leagueId } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
+  const matchdayScrollRef = useRef(null);
 
   // Use shared hook for current week
-  const { data: currentWeek } = useCurrentWeek();
+  const { weekNumber: currentWeekNumber } = useCurrentWeek();
 
-  const fetchPlayerDetails = useCallback(async () => {
-    if (!player) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      let playerId = player.id;
-
-      // For trend players with fake IDs, try to use the matched player ID
-      if (!playerId || playerId.toString().startsWith('trend-') || isNaN(parseInt(playerId))) {
-        // Check if this trend player has a matched real player
-        if (player.matchedPlayer && player.matchedPlayer.id) {
-          playerId = player.matchedPlayer.id;
-                  } else {
-          setError('Jugador de tendencias sin datos completos disponibles');
-          return;
-        }
-      }
-
-      const response = await fantasyAPI.getPlayerDetails(playerId, leagueId);
-      setPlayerData(response.data);
-    } catch (err) {
-      setError('Error al cargar los detalles del jugador');
-    } finally {
-      setLoading(false);
+  // Resolución del id real: los jugadores "de tendencias" llegan con ids
+  // sintéticos (trend-*) y solo son consultables vía su matchedPlayer.
+  const resolvedPlayerId = useMemo(() => {
+    if (!player) return null;
+    const playerId = player.id;
+    if (!playerId || playerId.toString().startsWith('trend-') || isNaN(parseInt(playerId))) {
+      return player.matchedPlayer?.id || null;
     }
-  }, [player, leagueId]);
+    return playerId;
+  }, [player]);
+  const isTrendWithoutData = !!player && !resolvedPlayerId;
+
+  const {
+    data: playerData,
+    isLoading: loading,
+    error: queryError,
+    refetch: fetchPlayerDetails,
+  } = useQuery({
+    queryKey: ['playerDetails', resolvedPlayerId, leagueId],
+    queryFn: async () => (await fantasyAPI.getPlayerDetails(resolvedPlayerId, leagueId)).data,
+    enabled: isOpen && !!resolvedPlayerId && !!leagueId,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+
+  const error = isTrendWithoutData
+    ? 'Jugador de tendencias sin datos completos disponibles'
+    : (queryError ? 'Error al cargar los detalles del jugador' : null);
+
+  // Non-passive wheel listener so e.preventDefault() actually works.
+  // React's synthetic onWheel registers as passive in modern browsers, which
+  // silently breaks preventDefault() and floods the console with warnings.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const el = matchdayScrollRef.current;
+    if (!el) return undefined;
+
+    const onWheel = (e) => {
+      // Any horizontal component (trackpad swipe etc.) → let the browser
+      // handle it natively. Don't fight with the user's input device.
+      if (e.deltaX !== 0) return;
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isOpen, playerData]);
+
+  // Al abrir la ficha, coloca el desglose de puntos en la última jornada
+  // disputada (las barras van en orden ascendente, así que es el extremo
+  // derecho). Solo al abrir/cargar datos: los clicks del usuario no re-saltan.
+  useEffect(() => {
+    if (!isOpen || !playerData) return undefined;
+    const el = matchdayScrollRef.current;
+    if (!el) return undefined;
+    // rAF: espera a que las barras estén pintadas antes de medir scrollWidth
+    const raf = requestAnimationFrame(() => {
+      el.scrollLeft = el.scrollWidth;
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isOpen, playerData]);
 
   const fetchNextOpponent = useCallback(async () => {
     try {
@@ -87,7 +122,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
         return Number.isNaN(parsed.getTime()) ? Infinity : parsed.getTime();
       };
 
-      const weekNumber = currentWeek?.data?.weekNumber || currentWeek?.weekNumber || 1;
+      const weekNumber = currentWeekNumber || 1;
       let nextWeek = weekNumber;
       let matchData = null;
 
@@ -151,7 +186,7 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
     } catch (error) {
       setNextOpponent(null);
     }
-  }, [playerData, player, currentWeek]);
+  }, [playerData, player, currentWeekNumber]);
   // Utility function to safely convert values to numbers
   const safeNumber = (value) => {
     if (typeof value === 'number') return value;
@@ -168,22 +203,19 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
   const formatValue = (value) => {
     const num = safeNumber(value);
     if (num === 0) return 'N/A';
-    return `${(num / 1000000).toFixed(1)}M`;
+    return formatCurrencyCompact(num);
   };
 
-  useEffect(() => {
-    if (isOpen && player?.id && leagueId) {
-      fetchPlayerDetails();
-    }
-  }, [isOpen, player, leagueId, fetchPlayerDetails]);
+  // Los detalles se cargan automáticamente vía useQuery (enabled: isOpen);
+  // fetchPlayerDetails queda como refetch para el botón de reintento.
 
   // currentWeek is now loaded automatically via the hook, no need for manual fetch
 
   useEffect(() => {
-    if (isOpen && (playerData || player) && currentWeek) {
+    if (isOpen && (playerData || player) && currentWeekNumber) {
       fetchNextOpponent();
     }
-  }, [isOpen, playerData, player, currentWeek, fetchNextOpponent]);
+  }, [isOpen, playerData, player, currentWeekNumber, fetchNextOpponent]);
 
   // Set default selected week when player data loads
   useEffect(() => {
@@ -201,30 +233,19 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
   // Lock scroll when modal is open
   useBodyScrollLock(Boolean(isOpen));
 
-  const overlay = useTransition(isOpen, {
-    from: { opacity: 0 },
-    enter: { opacity: 1 },
-    leave: { opacity: 0 },
-  });
-  const modalSpring = useSpring({
-    from: { opacity: 0, transform: 'scale(0.9) translateY(50px)' },
-    to: { opacity: isOpen ? 1 : 0, transform: isOpen ? 'scale(1) translateY(0)' : 'scale(0.9) translateY(50px)' },
-  });
-
   // Early return for null player to prevent errors
   if (!player) {
     return null;
   }
 
   return createPortal(
-    overlay((style, show) => show ? (
-      <animated.div
-        style={style}
+    <AnimatePresence>
+      {isOpen ? (
+      <motion.div
         className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
         onClick={onClose}
       >
-        <animated.div
-          style={modalSpring}
+        <motion.div
           className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[95vw] sm:w-full mx-2 sm:mx-4 max-w-4xl max-h-[90vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
@@ -239,133 +260,93 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
                 variant="subtle"
               />
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Cerrar"
                 className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
               >
                 <X className="w-5 h-5 md:w-6 md:h-6" />
               </button>
             </div>
 
-            {/* Mobile Layout */}
-            <div className="md:hidden">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center flex-shrink-0">
-                  {(playerData?.playerMaster?.images?.transparent?.['256x256'] ||
-                    player.matchedPlayer?.images?.transparent?.['256x256'] ||
-                    player.images?.transparent?.['256x256']) ? (
-                    <img
-                      src={playerData?.playerMaster?.images?.transparent?.['256x256'] ||
-                           player.matchedPlayer?.images?.transparent?.['256x256'] ||
-                           player.images?.transparent?.['256x256']}
-                      alt={playerData?.playerMaster?.nickname || player.matchedPlayer?.name || player.name}
-                      className="w-14 h-14 object-cover rounded-full"
-                    />
-                  ) : (
-                    <span className="text-2xl font-bold">
-                      {playerData?.playerMaster?.nickname?.[0] ||
-                       player.matchedPlayer?.nickname?.[0] ||
-                       player?.name?.[0] || player?.nickname?.[0] || '?'}
-                    </span>
-                  )}
-                </div>
+            {(() => {
+              // Resolve the same fields once instead of repeating three-way
+              // null-coalescing chains throughout the JSX.
+              const pm = playerData?.playerMaster;
+              const mp = player.matchedPlayer;
+              const playerImage =
+                pm?.images?.transparent?.['256x256'] ||
+                mp?.images?.transparent?.['256x256'] ||
+                player.images?.transparent?.['256x256'] ||
+                null;
+              const playerName =
+                pm?.nickname || pm?.name ||
+                mp?.nickname || mp?.name ||
+                player.name || player.nickname || 'Jugador';
+              const playerPosition =
+                pm?.position || mp?.position || player.position || 'Posición';
+              const playerTeam =
+                pm?.team?.name || mp?.team?.name || player.team?.name || null;
+              const lastSeason = pm?.lastSeasonPoints;
+              const initial = (playerName?.[0] || '?').toUpperCase();
 
-                <div className="flex-1 min-w-0 pr-20">
-                  <h2 className="text-xl font-bold truncate">
-                    {playerData?.playerMaster?.nickname || playerData?.playerMaster?.name ||
-                     player.matchedPlayer?.nickname || player.matchedPlayer?.name ||
-                     player.name || player.nickname || 'Jugador'}
-                  </h2>
-                  <div className="flex items-center gap-2 text-primary-100 text-sm mt-1">
-                    <User className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate">{playerData?.playerMaster?.position ||
-                           player.matchedPlayer?.position ||
-                           player.position || 'Posición'}</span>
+              return (
+                <div className="flex items-start sm:items-center gap-3 sm:gap-5 pr-20 sm:pr-24">
+                  {/* Avatar */}
+                  <div className="relative flex-shrink-0">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/15 backdrop-blur-sm rounded-full flex items-center justify-center ring-2 ring-white/30">
+                      {playerImage ? (
+                        <img
+                          src={playerImage}
+                          alt={playerName}
+                          className="w-14 h-14 sm:w-[72px] sm:h-[72px] object-cover rounded-full"
+                        />
+                      ) : (
+                        <span className="text-2xl sm:text-3xl font-bold">{initial}</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
 
-              {/* Team and Next Opponent - Stacked on Mobile */}
-              <div className="space-y-2 text-sm">
-                {(playerData?.playerMaster?.team?.name || player.matchedPlayer?.team?.name || player.team?.name) && (
-                  <div className="flex items-center gap-2 text-primary-100">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />
-                    <span className="truncate">{playerData?.playerMaster?.team?.name ||
-                           player.matchedPlayer?.team?.name ||
-                           player.team?.name}</span>
-                  </div>
-                )}
-                {nextOpponent && (
-                  <div className="flex items-center gap-1 text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full w-fit">
-                    <span>J{nextOpponent.week} vs {nextOpponent.opponent}</span>
-                    <span className="opacity-75">({nextOpponent.isHome ? 'C' : 'F'})</span>
-                  </div>
-                )}
-              </div>
-            </div>
+                  {/* Name + meta */}
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-xl sm:text-3xl font-bold leading-tight truncate">
+                      {playerName}
+                    </h2>
 
-            {/* Desktop Layout */}
-            <div className="hidden md:flex items-center gap-6">
-              <div className="w-20 h-20 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
-                {(playerData?.playerMaster?.images?.transparent?.['256x256'] ||
-                  player.matchedPlayer?.images?.transparent?.['256x256'] ||
-                  player.images?.transparent?.['256x256']) ? (
-                  <img
-                    src={playerData?.playerMaster?.images?.transparent?.['256x256'] ||
-                         player.matchedPlayer?.images?.transparent?.['256x256'] ||
-                         player.images?.transparent?.['256x256']}
-                    alt={playerData?.playerMaster?.nickname || player.matchedPlayer?.name || player.name}
-                    className="w-16 h-16 object-cover rounded-full"
-                  />
-                ) : (
-                  <span className="text-3xl font-bold">
-                    {playerData?.playerMaster?.nickname?.[0] ||
-                     player.matchedPlayer?.nickname?.[0] ||
-                     player?.name?.[0] || player?.nickname?.[0] || '?'}
-                  </span>
-                )}
-              </div>
+                    <div className="mt-1.5 sm:mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-primary-100 text-xs sm:text-sm">
+                      <span className="inline-flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{playerPosition}</span>
+                      </span>
+                      {playerTeam && (
+                        <span className="inline-flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">{playerTeam}</span>
+                        </span>
+                      )}
+                      {lastSeason ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Trophy className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>T. pasada: {lastSeason} pts</span>
+                        </span>
+                      ) : null}
+                    </div>
 
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold mb-2">
-                  {playerData?.playerMaster?.nickname || playerData?.playerMaster?.name ||
-                   player.matchedPlayer?.nickname || player.matchedPlayer?.name ||
-                   player.name || player.nickname || 'Jugador'}
-                </h2>
-                <div className="flex items-center gap-4 text-primary-100">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    <span>{playerData?.playerMaster?.position ||
-                           player.matchedPlayer?.position ||
-                           player.position || 'Posición'}</span>
-                  </div>
-                  {(playerData?.playerMaster?.team?.name || player.matchedPlayer?.team?.name || player.team?.name) && (
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4" />
-                      <div className="flex items-center gap-3">
-                        <span>{playerData?.playerMaster?.team?.name ||
-                               player.matchedPlayer?.team?.name ||
-                               player.team?.name}</span>
-                        {nextOpponent && (
-                          <div className="flex items-center gap-1 text-xs bg-white bg-opacity-20 px-2 py-1 rounded-full">
-                            <span>J{nextOpponent.week} vs</span>
-                            <span className="font-semibold">{nextOpponent.opponent}</span>
-                            <span className="text-xs opacity-75">
-                              ({nextOpponent.isHome ? 'Casa' : 'Fuera'})
-                            </span>
-                          </div>
-                        )}
+                    {nextOpponent && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 text-xs sm:text-sm bg-white/15 backdrop-blur-sm px-2.5 py-1 rounded-full">
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span className="font-medium">J{nextOpponent.week}</span>
+                        <span className="opacity-80">vs</span>
+                        <span className="font-semibold">{nextOpponent.opponent}</span>
+                        <span className="opacity-75 ml-1">
+                          ({nextOpponent.isHome ? 'Casa' : 'Fuera'})
+                        </span>
                       </div>
-                    </div>
-                  )}
-                  {playerData?.playerMaster?.lastSeasonPoints && (
-                    <div className="flex items-center gap-2">
-                      <Trophy className="w-4 h-4" />
-                      <span>Temporada pasada: {playerData.playerMaster.lastSeasonPoints} pts</span>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {/* Content */}
@@ -570,145 +551,142 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
                 {/* Enhanced Points per Matchday */}
                 {playerData?.playerMaster?.playerStats && playerData.playerMaster.playerStats.length > 0 && (
                   <div className="card p-4">
-                    {/* Header with Total Points */}
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Trophy className="w-5 h-5 text-primary-500" />
-                        Desglose de Puntos
-                      </h3>
-                      <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                        Total: {playerData.playerMaster.playerStats.reduce((sum, stat) => sum + stat.totalPoints, 0)} pts
-                      </div>
-                    </div>
+                    {(() => {
+                      const stats = playerData.playerMaster.playerStats;
+                      const totalPts = stats.reduce((sum, s) => sum + s.totalPoints, 0);
+                      const avgPts = stats.length ? (totalPts / stats.length) : 0;
+                      const sortedStats = [...stats].sort((a, b) => a.weekNumber - b.weekNumber);
+                      const maxAbs = Math.max(...stats.map(s => Math.abs(s.totalPoints)), 1);
+                      const showArrows = stats.length > 8;
 
-                    {/* Interactive Points Bars - Scrollable for 38 Matchdays */}
-                    <div className="mb-6">
-                      <div className="relative">
-                        {/* Navigation Arrows */}
-                        {playerData.playerMaster.playerStats.length > 8 && (
-                          <>
-                            <button
-                              onClick={() => {
-                                const container = document.getElementById('matchday-scroll-container');
-                                container.scrollLeft -= 200;
-                              }}
-                              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-white dark:bg-gray-800 shadow-lg rounded-full p-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            >
-                              <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => {
-                                const container = document.getElementById('matchday-scroll-container');
-                                container.scrollLeft += 200;
-                              }}
-                              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-white dark:bg-gray-800 shadow-lg rounded-full p-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                            >
-                              <svg className="w-4 h-4 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
-                          </>
-                        )}
+                      const getBarColor = (points) => {
+                        if (points < 0) return 'bg-red-500';
+                        if (points <= 4) return 'bg-yellow-500';
+                        if (points <= 9) return 'bg-green-500';
+                        if (points <= 20) return 'bg-blue-500';
+                        return 'bg-purple-500';
+                      };
 
-                        {/* Scrollable Container */}
-                        <div
-                          id="matchday-scroll-container"
-                          className="flex gap-2 overflow-x-auto scrollbar-hide pb-2"
-                          style={{
-                            scrollBehavior: 'smooth',
-                            WebkitOverflowScrolling: 'touch'
-                          }}
-                        >
-                          {playerData.playerMaster.playerStats
-                            .sort((a, b) => a.weekNumber - b.weekNumber)
-                            .map((stat) => {
-                              const maxPoints = Math.max(...playerData.playerMaster.playerStats.map(s => Math.abs(s.totalPoints)));
-                              const height = Math.max((Math.abs(stat.totalPoints) / maxPoints) * 100, 8);
-                              const isSelected = stat.weekNumber === selectedWeek;
+                      const scrollByAmount = (delta) => {
+                        const container = matchdayScrollRef.current;
+                        if (container) container.scrollLeft += delta;
+                      };
 
-                              // New color system
-                              const getBarColor = (points) => {
-                                if (points < 0) return 'bg-red-500';
-                                if (points <= 4) return 'bg-yellow-500';
-                                if (points <= 9) return 'bg-green-500';
-                                if (points <= 20) return 'bg-blue-500';
-                                return 'bg-purple-500';
-                              };
-
-                              return (
-                                <div
-                                  key={stat.weekNumber}
-                                  onClick={() => {
-                                    setSelectedWeek(stat.weekNumber);
-                                    // Auto-scroll to selected item
-                                    const container = document.getElementById('matchday-scroll-container');
-                                    const element = document.getElementById(`matchday-${stat.weekNumber}`);
-                                    if (element && container) {
-                                      const elementLeft = element.offsetLeft;
-                                      const elementWidth = element.offsetWidth;
-                                      const containerWidth = container.offsetWidth;
-                                      const scrollLeft = elementLeft - (containerWidth / 2) + (elementWidth / 2);
-                                      container.scrollLeft = scrollLeft;
-                                    }
-                                  }}
-                                  id={`matchday-${stat.weekNumber}`}
-                                  className={`cursor-pointer group transition-all duration-200 flex-shrink-0 ${
-                                    isSelected ? 'transform scale-105' : 'hover:transform hover:scale-102'
-                                  }`}
-                                  style={{ minWidth: '60px' }}
-                                >
-                                  <div className="flex flex-col items-center">
-                                    {/* Bar */}
-                                    <div className="relative w-14 h-16 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
-                                      <div
-                                        className={`absolute bottom-0 w-full rounded-lg transition-all duration-300 ${
-                                          getBarColor(stat.totalPoints)
-                                        } ${isSelected ? 'shadow-lg ring-2 ring-primary-300' : 'group-hover:shadow-md'}`}
-                                        style={{ height: `${height}%` }}
-                                      />
-                                      {/* Points label inside bar */}
-                                      <div className="absolute inset-0 flex items-end justify-center pb-1">
-                                        <span className={`text-sm font-bold ${
-                                          Math.abs(stat.totalPoints) > 3 ? 'text-white' : 'text-gray-700 dark:text-gray-300'
-                                        }`}>
-                                          {stat.totalPoints}
-                                        </span>
-                                      </div>
-
-                                      {/* Ideal formation indicator */}
-                                      {stat.isInIdealFormation && (
-                                        <div className="absolute top-1 left-1">
-                                          <Star className="w-3 h-3 text-yellow-300 fill-current drop-shadow" />
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Week number */}
-                                    <div className={`mt-1 text-xs font-medium transition-colors ${
-                                      isSelected
-                                        ? 'text-primary-600 dark:text-primary-400 font-bold'
-                                        : 'text-gray-600 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200'
-                                    }`}>
-                                      J{stat.weekNumber}
-                                    </div>
-                                  </div>
+                      return (
+                        <>
+                          {/* Header: title + totals + arrows */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                              <Trophy className="w-5 h-5 text-primary-500" />
+                              Desglose de Puntos
+                            </h3>
+                            <div className="flex items-center gap-3">
+                              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                                <span className="font-semibold text-gray-900 dark:text-white">{totalPts}</span> pts
+                                <span className="mx-1.5 opacity-40">·</span>
+                                <span className="font-semibold text-gray-900 dark:text-white">{avgPts.toFixed(1)}</span>/j
+                              </div>
+                              {showArrows && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    aria-label="Desplazar jornadas a la izquierda"
+                                    onClick={() => scrollByAmount(-240)}
+                                    className="p-1.5 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors"
+                                  >
+                                    <ChevronLeft className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    aria-label="Desplazar jornadas a la derecha"
+                                    onClick={() => scrollByAmount(240)}
+                                    className="p-1.5 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 transition-colors"
+                                  >
+                                    <ChevronRight className="w-4 h-4" />
+                                  </button>
                                 </div>
-                              );
-                            })}
-                        </div>
-
-                        {/* Scroll Indicator */}
-                        {playerData.playerMaster.playerStats.length > 8 && (
-                          <div className="flex justify-center mt-2">
-                            <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
-                              ← Desliza para ver todas las jornadas →
+                              )}
                             </div>
                           </div>
-                        )}
-                      </div>
-                    </div>
+
+                          {/* Color legend */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">
+                            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500" /> &lt; 0</span>
+                            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-yellow-500" /> 1-4</span>
+                            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500" /> 5-9</span>
+                            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500" /> 10-20</span>
+                            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-purple-500" /> 20+</span>
+                            <span className="inline-flex items-center gap-1 ml-auto"><Star className="w-3 h-3 text-yellow-400 fill-current" /> Once ideal</span>
+                          </div>
+
+                          {/* Scrollable bar chart — wheel-aware, no auto-snap on click */}
+                          <div className="mb-6">
+                            <div
+                              id="matchday-scroll-container"
+                              ref={matchdayScrollRef}
+                              className="flex gap-1.5 sm:gap-2 overflow-x-auto overflow-y-hidden pb-2 px-0.5 scroll-smooth"
+                              style={{ WebkitOverflowScrolling: 'touch' }}
+                            >
+                              {sortedStats.map((stat) => {
+                                const height = Math.max((Math.abs(stat.totalPoints) / maxAbs) * 100, 8);
+                                const isSelected = stat.weekNumber === selectedWeek;
+
+                                return (
+                                  <button
+                                    type="button"
+                                    key={stat.weekNumber}
+                                    aria-label={`Jornada ${stat.weekNumber}, ${stat.totalPoints} puntos`}
+                                    aria-pressed={isSelected}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => setSelectedWeek(prev => prev === stat.weekNumber ? null : stat.weekNumber)}
+                                    id={`matchday-${stat.weekNumber}`}
+                                    className={`cursor-pointer group flex-shrink-0 bg-transparent border-0 p-0 focus:outline-none focus:ring-2 focus:ring-primary-400 rounded-lg ${
+                                      isSelected ? '' : 'hover:opacity-90'
+                                    }`}
+                                    style={{ minWidth: '52px' }}
+                                  >
+                                    <div className="flex flex-col items-center">
+                                      <div className={`relative w-12 sm:w-14 h-20 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden transition-shadow ${
+                                        isSelected ? 'ring-2 ring-primary-500 shadow-md' : 'group-hover:shadow-sm'
+                                      }`}>
+                                        <div
+                                          className={`absolute bottom-0 w-full rounded-b-lg transition-all duration-300 ${getBarColor(stat.totalPoints)}`}
+                                          style={{ height: `${height}%` }}
+                                        />
+                                        <div className="absolute inset-0 flex items-end justify-center pb-1">
+                                          <span className={`text-sm font-bold ${
+                                            Math.abs(stat.totalPoints) > 3 ? 'text-white drop-shadow-sm' : 'text-gray-700 dark:text-gray-200'
+                                          }`}>
+                                            {stat.totalPoints}
+                                          </span>
+                                        </div>
+                                        {stat.isInIdealFormation && (
+                                          <div className="absolute top-1 left-1">
+                                            <Star className="w-3 h-3 text-yellow-300 fill-current drop-shadow" />
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className={`mt-1 text-[10px] sm:text-xs font-medium transition-colors ${
+                                        isSelected
+                                          ? 'text-primary-600 dark:text-primary-400 font-bold'
+                                          : 'text-gray-500 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-gray-200'
+                                      }`}>
+                                        J{stat.weekNumber}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {!selectedWeek && (
+                              <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
+                                Toca una jornada para ver el detalle
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     {(() => {
                       const stat = playerData.playerMaster.playerStats.find(s => s.weekNumber === selectedWeek);
@@ -887,9 +865,10 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
               </div>
             )}
           </div>
-        </animated.div>
-      </animated.div>
-    ) : null),
+        </motion.div>
+      </motion.div>
+      ) : null}
+    </AnimatePresence>,
     document.body
   );
 };

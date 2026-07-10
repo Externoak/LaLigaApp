@@ -42,11 +42,14 @@ const bundledAllowedOrigins = [
   'http://127.0.0.1:*',
   'app://.'
 ];
-const defaultAllowedOrigins = envFileExists
-  ? bundledAllowedOrigins
-  : ['*', ...bundledAllowedOrigins];
+// Sin comodines en el allowlist: al arrancar con bind no-loopback, index.js
+// añade en runtime los orígenes de las IPs LAN propias (http://<ip>:*).
+const defaultAllowedOrigins = bundledAllowedOrigins;
 
-const derivedDefaultHost = process.env.APP_HOST || process.env.HOST || (envFileExists ? '127.0.0.1' : '0.0.0.0');
+// Accesible en la LAN por defecto: abrir la app desde el móvil en la red
+// local es una función anunciada (ver README). APP_HOST=127.0.0.1 restringe
+// el servidor a esta máquina.
+const derivedDefaultHost = process.env.APP_HOST || process.env.HOST || '0.0.0.0';
 
 const defaultConfig = {
   env: process.env.NODE_ENV || 'development',
@@ -63,7 +66,7 @@ const defaultConfig = {
   proxy: {
     basePath: process.env.PROXY_BASE_PATH || '/api',
     statsBasePath: process.env.PROXY_STATS_BASE_PATH || '/stats',
-    fantasyTarget: process.env.PROXY_FANTASY_TARGET || 'https://api-fantasy.llt-services.com',
+    fantasyTarget: process.env.PROXY_FANTASY_TARGET || 'https://fantasy-api.llt-services.com',
     lineupPath: process.env.PROXY_LINEUP_PATH || '/api/v4/scrape/lineup',
     lineupAllowedHosts: toList(process.env.PROXY_LINEUP_ALLOWED_HOSTS, ['www.futbolfantasy.com']),
     forwardHeaders: ['authorization', 'x-app', 'x-lang', 'content-type'],

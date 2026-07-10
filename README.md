@@ -8,7 +8,7 @@
 
 > Una plataforma integral de gestión de La Liga Fantasy con información extra de mercado y onces probables de https://www.futbolfantasy.com/
 
-[![Version](https://img.shields.io/badge/version-3.4.0-green.svg)](https://github.com/Externoak/LaLigaApp)
+[![Version](https://img.shields.io/badge/version-3.5.0-green.svg)](https://github.com/Externoak/LaLigaApp)
 [![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 [![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#plataformas)
@@ -28,7 +28,7 @@ La Liga Fantasy oficial solo tiene aplicación móvil, dejando a los usuarios de
 
 Imagen del menu principal:
 
-<img src="public/LaLigaAppMainPage.png">
+<img src="docs/LaLigaAppMainPage.png">
 
 ## 📥 Cómo usar la aplicación
 
@@ -44,7 +44,7 @@ Imagen del menu principal:
 
 **🛡️ Tus datos están completamente seguros:**
 
-- **Sin servidores propios / datos de sesión locales**: Preferencias y sesión se guardan localmente (encriptados cuando aplica)
+- **Sin servidores propios / datos de sesión locales**: Preferencias y sesión se guardan localmente en tu dispositivo; nunca salen de él
 - **Sin telemetría**: No enviamos ningún dato personal a servidores externos
 - **Sin rastreo**: La aplicación no rastrea tu actividad ni uso
 - **Sin análisis**: No recopilamos estadísticas de uso ni información personal
@@ -81,7 +81,7 @@ El proyecto no fomenta ni permite eludir medidas técnicas, scraping prohibido n
 
 ### Requisitos previos
 
-- **Node.js** 16.0.0 o superior
+- **Node.js** 18.0.0 o superior (CI y Docker usan Node 20)
 - **npm** 7.0.0 o superior
 - **Git** para clonar el repositorio
 
@@ -222,7 +222,7 @@ LaLigaApp/
 La aplicación usa un servidor unificado que sirve tanto la aplicación React como el proxy CORS:
 
 - **Servidor Unificado**: `http://localhost:3005`
-- **Target API**: `https://api-fantasy.llt-services.com`
+- **Target API**: `https://fantasy-api.llt-services.com`
 
 ### Autenticación
 

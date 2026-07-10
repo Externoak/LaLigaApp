@@ -12,6 +12,7 @@
     }],
     "unused-imports/no-unused-imports": "error",
     "unused-imports/no-unused-vars": "off",
-    "no-empty": ["error", { "allowEmptyCatch": true }]
+    "no-empty": ["error", { "allowEmptyCatch": true }],
+    "react-hooks/exhaustive-deps": "warn"
   }
 }

@@ -5,7 +5,8 @@ import {
   RefreshCw,
   X,
   AlertTriangle,
-  Clock
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import updateService from '../../services/updateService';
 import toast from 'react-hot-toast';
@@ -16,6 +17,18 @@ const UpdateChecker = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateProgress, setUpdateProgress] = useState(0);
+  // Mensaje de error de la última actualización fallida; cuando no es null se
+  // muestra el modal de respaldo con descarga manual + enlace a GitHub.
+  const [updateError, setUpdateError] = useState(null);
+
+  // https en Electron va por el IPC validado; en web, pestaña nueva.
+  const openExternalUrl = (url) => {
+    if (window.electronAPI?.openExternal) {
+      window.electronAPI.openExternal(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   useEffect(() => {
     // Auto-check for updates on component mount (no toast notification)
@@ -55,7 +68,9 @@ const UpdateChecker = () => {
         } else if (progressData.step === 'error') {
           setUpdateProgress(0);
           setIsUpdating(false);
-          toast.error(progressData.message || 'Error en la actualización');
+          toast.dismiss('update-progress');
+          // Modal de respaldo con descarga manual + enlace a releases
+          setUpdateError(progressData.message || 'Error en la actualización');
         }
 
         // Show progress messages as toasts for better UX
@@ -193,7 +208,8 @@ const UpdateChecker = () => {
         }
       }
 
-      toast.error(`Error al actualizar: ${errorMessage}`);
+      // Modal de respaldo con descarga manual + enlace a releases
+      setUpdateError(errorMessage);
 
       setUpdateProgress(0);
       setIsUpdating(false);
@@ -244,10 +260,12 @@ const UpdateChecker = () => {
     <>
       {/* Update Check Button */}
       <button
+        type="button"
         onClick={() => checkForUpdates(true)}
         disabled={isChecking}
         className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
         title="Buscar actualizaciones"
+        aria-label="Buscar actualizaciones"
       >
         <RefreshCw className={`w-5 h-5 ${isChecking ? 'animate-spin' : ''}`} />
 
@@ -289,7 +307,9 @@ const UpdateChecker = () => {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowUpdateModal(false)}
+                  aria-label="Cerrar"
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
                   <X className="w-5 h-5" />
@@ -383,6 +403,98 @@ const UpdateChecker = () => {
                       Actualizar Ahora
                     </>
                   )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fallback: la actualización automática falló → descarga manual */}
+      <AnimatePresence>
+        {updateError && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4"
+            style={{ zIndex: 10000, backdropFilter: 'blur(2px)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md flex flex-col"
+              role="alertdialog"
+              aria-labelledby="update-failed-title"
+              aria-describedby="update-failed-desc"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                    <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div>
+                    <h3 id="update-failed-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+                      Actualización fallida
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      La actualización automática no se pudo completar
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUpdateError(null)}
+                  aria-label="Cerrar"
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6" id="update-failed-desc">
+                <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-700 dark:text-red-300 break-words">
+                    {updateError}
+                  </p>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  Tu versión actual sigue funcionando. Puedes descargar la última
+                  versión manualmente: extrae el .zip y reemplaza los archivos de
+                  la aplicación con ella cerrada.
+                </p>
+
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(updateService.getGitHubDownloadUrl())}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar manualmente (.zip)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openExternalUrl(updateService.releaseUrl)}
+                    className="w-full bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Ver releases en GitHub
+                  </button>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="p-6 pt-0">
+                <button
+                  type="button"
+                  onClick={() => setUpdateError(null)}
+                  className="w-full bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200 font-medium py-2 px-4 rounded-lg transition-colors"
+                >
+                  Cerrar
                 </button>
               </div>
             </motion.div>

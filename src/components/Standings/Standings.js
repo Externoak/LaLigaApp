@@ -1,23 +1,23 @@
-/* eslint-disable react-hooks/rules-of-hooks */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { useNavigate } from 'react-router-dom';
-import { Trophy, Crown, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Trophy, Crown, ChevronUp, ChevronDown, ChevronsUpDown, RefreshCw } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import { formatCurrency, formatNumber } from '../../utils/helpers';
+import { formatCurrency, formatNumber, extractArray } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
-import marketTrendsService from '../../services/marketTrendsService';
-import { mapSpecialNameForTrends } from '../../utils/playerNameMatcher';
+import useMarketTrends from '../../hooks/useMarketTrends';
+import useTeamMarketIncreases from '../../hooks/useTeamMarketIncreases';
+import { useCurrentWeek } from '../../hooks/useCurrentWeek';
+import StandingsEvolution from './StandingsEvolution';
 
 const Standings = () => {
-  const { leagueId, user } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [trendsInitialized, setTrendsInitialized] = useState(false);
-  const [teamMarketIncreases, setTeamMarketIncreases] = useState(new Map());
   const [teamWeekPoints, setTeamWeekPoints] = useState(new Map());
   const [sortBy, setSortBy] = useState('position'); // position, manager, points, weekPoints, value, marketIncrease
   const [sortOrder, setSortOrder] = useState('asc'); // asc, desc
@@ -31,135 +31,20 @@ const Standings = () => {
     gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
-  // Get current week to fetch week points
-  const { data: currentWeekData } = useQuery({
-    queryKey: ['currentWeek'],
-    queryFn: () => fantasyAPI.getCurrentWeek(),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  });
+  // Get current week to fetch week points (shared hook, normalized number)
+  const { weekNumber: currentWeekNumber } = useCurrentWeek();
 
-  // Initialize market trends service
-  useEffect(() => {
-    const initializeMarketTrends = async () => {
-      if (trendsInitialized || !leagueId) return;
+  // Market trends via el hook compartido (una query key para toda la app)
+  const { trendsReady: trendsInitialized } = useMarketTrends();
 
-      try {
-                await marketTrendsService.initialize();
-        setTrendsInitialized(true);
-              } catch (error) {
-      }
-    };
-
-    initializeMarketTrends();
-  }, [leagueId, trendsInitialized]);
-
-  // Calculate team market value increases
-  useEffect(() => {
-    const calculateTeamMarketIncreases = async () => {
-      if (!trendsInitialized || !standings || !leagueId) return;
-
-            const increases = new Map();
-
-      try {
-        // Get standings data
-        let standingsData = [];
-        if (Array.isArray(standings)) {
-          standingsData = standings;
-        } else if (standings?.data && Array.isArray(standings.data)) {
-          standingsData = standings.data;
-        } else if (standings?.elements && Array.isArray(standings.elements)) {
-          standingsData = standings.elements;
-        }
-
-        // For each team, get their players and calculate total increase
-        // Process teams sequentially with delay to avoid rate limiting
-        for (const team of standingsData) {
-          const teamId = team.id || team.team?.id;
-          if (!teamId) continue;
-
-          try {
-            // Get team data including players - use React Query cache
-            const teamData = await queryClient.fetchQuery({
-              queryKey: ['teamData', leagueId, teamId],
-              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
-              staleTime: 15 * 60 * 1000, // 15 minutos - equipos no cambian frecuentemente
-              gcTime: 30 * 60 * 1000, // 30 minutos
-            });
-            let players = [];
-
-            if (teamData?.players && Array.isArray(teamData.players)) {
-              players = teamData.players;
-            } else if (teamData?.data?.players && Array.isArray(teamData.data.players)) {
-              players = teamData.data.players;
-            }
-
-            let totalIncrease = 0;
-
-            // Calculate increase for each player
-            for (const playerTeam of players) {
-              const player = playerTeam.playerMaster;
-              if (!player) continue;
-
-              // Get trend data for this player
-              const baseName = mapSpecialNameForTrends(player.nickname || player.name);
-              let trendData = marketTrendsService.getPlayerMarketTrend(
-                baseName,
-                player.positionId,
-                player.team?.name
-              );
-
-              // Fallback without team
-              if (!trendData) {
-                trendData = marketTrendsService.getPlayerMarketTrend(
-                  baseName,
-                  player.positionId
-                );
-              }
-
-              // Add the market value change (can be positive or negative)
-              if (trendData && typeof trendData.diferencia1 === 'number') {
-                totalIncrease += trendData.diferencia1;
-              }
-            }
-
-            increases.set(teamId, totalIncrease);
-
-            // Add delay between requests to avoid 429 (importante!)
-            await new Promise(resolve => setTimeout(resolve, 200));
-
-          } catch (error) {
-            increases.set(teamId, 0);
-          }
-        }
-
-        setTeamMarketIncreases(increases);
-
-      } catch (error) {
-      }
-    };
-
-    calculateTeamMarketIncreases();
-  }, [trendsInitialized, standings, leagueId, queryClient]);
+  // Team market value increases via the shared hook
+  const teamMarketIncreases = useTeamMarketIncreases(standings, leagueId, trendsInitialized);
 
   // Fetch week points from weekly ranking
   useEffect(() => {
     const fetchTeamWeekPoints = async () => {
-      if (!leagueId || !currentWeekData) return;
-
-      // Extract current week number
-      let currentWeek = null;
-      if (currentWeekData?.week) {
-        currentWeek = currentWeekData.week;
-      } else if (currentWeekData?.data?.week) {
-        currentWeek = currentWeekData.data.week;
-      } else if (currentWeekData?.weekNumber) {
-        currentWeek = currentWeekData.weekNumber;
-      } else if (currentWeekData?.data?.weekNumber) {
-        currentWeek = currentWeekData.data.weekNumber;
-      }
-
-      if (!currentWeek) return;
+      if (!leagueId || !currentWeekNumber) return;
+      const currentWeek = currentWeekNumber;
 
       try {
         // Check if current week has started by fetching matches
@@ -172,8 +57,7 @@ const Standings = () => {
             gcTime: 5 * 60 * 1000,
           });
 
-          const matches = Array.isArray(matchesResponse) ? matchesResponse :
-                         matchesResponse?.data || matchesResponse?.elements || [];
+          const matches = extractArray(matchesResponse);
 
           // Check if any match has started (matchState >= 2)
           const hasAnyMatchStarted = matches.some(match =>
@@ -199,12 +83,7 @@ const Standings = () => {
         const weekPointsMap = new Map();
 
         // Extract weekly ranking data
-        let weeklyData = [];
-        if (Array.isArray(weeklyRanking)) {
-          weeklyData = weeklyRanking;
-        } else if (weeklyRanking?.data && Array.isArray(weeklyRanking.data)) {
-          weeklyData = weeklyRanking.data;
-        }
+        const weeklyData = extractArray(weeklyRanking);
 
         // Map week points by team ID
         weeklyData.forEach(item => {
@@ -223,35 +102,10 @@ const Standings = () => {
     };
 
     fetchTeamWeekPoints();
-  }, [leagueId, currentWeekData, queryClient]);
-
-  if (isLoading) return <LoadingSpinner fullScreen={true} />;
-
-  if (error) {
-    return <ErrorDisplay
-      error={error}
-      title="Error al cargar la clasificación"
-      onRetry={refetch}
-      fullScreen={true}
-    />;
-  }
+  }, [leagueId, currentWeekNumber, queryClient]);
 
   // Handle different API response structures (memoized)
-  const standingsData = useMemo(() => {
-    if (Array.isArray(standings)) {
-      return standings;
-    } else if (standings?.data && Array.isArray(standings.data)) {
-      return standings.data;
-    } else if (standings?.elements && Array.isArray(standings.elements)) {
-      return standings.elements;
-    } else if (standings && typeof standings === 'object') {
-      const arrayProperty = Object.values(standings).find(val => Array.isArray(val));
-      if (arrayProperty) {
-        return arrayProperty;
-      }
-    }
-    return [];
-  }, [standings]);
+  const standingsData = useMemo(() => extractArray(standings), [standings]);
 
   // Helper functions defined before useMemo
   const getTeamName = (item) => {
@@ -435,11 +289,19 @@ const Standings = () => {
             await queryClient.invalidateQueries({ queryKey: ['teamData'] });
             refetch();
           }}
-          className="btn-primary"
+          className="btn-primary flex items-center gap-2"
         >
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           Actualizar
         </button>
       </div>
+
+      {/* Evolución de posiciones por jornada (colapsable) */}
+      <StandingsEvolution
+        leagueId={leagueId}
+        currentWeekNumber={currentWeekNumber}
+        userTeamId={getTeamId(standingsData.find(isCurrentUser) || {})}
+      />
 
       {/* Standings Table - Desktop */}
       <div className="card overflow-hidden hidden md:block">

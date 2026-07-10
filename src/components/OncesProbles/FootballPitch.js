@@ -1,5 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle, Heart, Plus } from 'lucide-react';
+import { setImageFallback } from '../../utils/helpers';
 
 const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
 
@@ -34,7 +35,10 @@ const PlayerCard = ({ player, isStarter = true, onPlayerClick }) => {
               onError={(e) => {
                 e.target.style.display = 'none';
                 const fontSize = isStarter ? 'text-xl' : 'text-lg';
-                e.target.parentNode.innerHTML = `<div class="w-full h-full bg-primary-500 rounded-full flex items-center justify-center text-white ${fontSize} font-bold">${(player.playerMaster?.nickname || player.playerMaster?.name || player.name || player.nickname || 'P').charAt(0)}</div>`;
+                setImageFallback(e.target.parentNode, {
+                  className: `w-full h-full bg-primary-500 rounded-full flex items-center justify-center text-white ${fontSize} font-bold`,
+                  text: (player.playerMaster?.nickname || player.playerMaster?.name || player.name || player.nickname || 'P').charAt(0),
+                });
               }}
             />
           ) : (
@@ -220,7 +224,10 @@ const FootballPitch = ({ lineupData, loading = false, upcomingOpponents = [], on
                   className="w-16 h-16 object-contain bg-white"
                   onError={(e) => {
                     e.target.style.display = 'none';
-                    e.target.parentNode.innerHTML = `<div class="w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-xl font-bold text-gray-600 dark:text-gray-300">${lineupData.team.name.charAt(0)}</div>`;
+                    setImageFallback(e.target.parentNode, {
+                      className: 'w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center text-xl font-bold text-gray-600 dark:text-gray-300',
+                      text: lineupData.team.name.charAt(0),
+                    });
                   }}
                 />
               ) : (

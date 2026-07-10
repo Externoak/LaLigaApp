@@ -152,7 +152,9 @@ const ApiStatus = () => {
             </div>
 
             <button
+              type="button"
               onClick={() => setShowNotification(false)}
+              aria-label="Cerrar notificación"
               className={`ml-2 flex-shrink-0 rounded-md p-1.5 inline-flex focus:outline-none focus:ring-2 focus:ring-offset-2 ${
                 notification.type === 'warning'
                   ? 'text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-800 focus:ring-yellow-600'

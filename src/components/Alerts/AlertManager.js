@@ -7,8 +7,6 @@ import {
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import { useAlertStore } from '../../stores/alertStore';
-import alertMonitoringService from '../../services/alertMonitoringService';
-import { DiscordNotificationService } from '../../services/discordNotificationService';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -17,19 +15,18 @@ const AlertManager = () => {
   const [_error] = useState(null);
   const [showCreateAlert, setShowCreateAlert] = useState(false);
   const [availablePlayers, setAvailablePlayers] = useState([]);
-  const [discordService] = useState(() => new DiscordNotificationService());
-  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
 
-  const { leagueId, user } = useAuthStore();
-  const {
-    alerts,
-    initializeAlerts,
-    createAlert,
-    deleteAlert,
-    toggleAlert,
-    updateAlert,
-    isMonitoring
-  } = useAlertStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
+  const user = useAuthStore((state) => state.user);
+  const alerts = useAlertStore((state) => state.alerts);
+  const initializeAlerts = useAlertStore((state) => state.initializeAlerts);
+  const createAlert = useAlertStore((state) => state.createAlert);
+  const deleteAlert = useAlertStore((state) => state.deleteAlert);
+  const toggleAlert = useAlertStore((state) => state.toggleAlert);
+  const isMonitoring = useAlertStore((state) => state.isMonitoring);
+  const startMonitoring = useAlertStore((state) => state.startMonitoring);
+  const stopMonitoring = useAlertStore((state) => state.stopMonitoring);
+  const storeTestAlert = useAlertStore((state) => state.testAlert);
 
   const handleStartMonitoring = useCallback(() => {
     const activeAlerts = alerts.filter(a => a.enabled && a.status === 'active');
@@ -38,17 +35,12 @@ const AlertManager = () => {
       return;
     }
 
-    alertMonitoringService.startMonitoring(activeAlerts, (triggeredAlert, triggerData) => {
-      // Update alert status in store
-      updateAlert(triggeredAlert.id, {
-        status: 'triggered',
-        triggeredAt: new Date().toISOString(),
-        triggerData
-      }, user?.userId, leagueId);
-    });
+    // El motor del store lee las alertas vigentes en cada ciclo y actualiza
+    // el estado/notificaciones él mismo.
+    startMonitoring();
 
     toast.success(`🔍 Monitoreo iniciado para ${activeAlerts.length} alertas`);
-  }, [alerts, updateAlert, user?.userId, leagueId]);
+  }, [alerts, startMonitoring]);
 
   // New Alert Form State
   const [newAlert, setNewAlert] = useState({
@@ -60,9 +52,7 @@ const AlertManager = () => {
     targetDate: '',
     targetValue: '',
     message: '',
-    enabled: true,
-    notificationMethods: ['discord'], // For now, default to discord
-    discordWebhook: ''
+    enabled: true
   });
 
   useEffect(() => {
@@ -78,15 +68,8 @@ const AlertManager = () => {
     }
   }, [leagueId, user?.userId, alerts, handleStartMonitoring, initializeAlerts, isMonitoring]);
 
-  useEffect(() => {
-    // Update monitoring when alerts change
-    if (alerts.length > 0) {
-      const activeAlerts = alerts.filter(a => a.enabled && a.status === 'active');
-      alertMonitoringService.updateAlerts(activeAlerts);
-    }
-  }, [alerts]);
-
-  // Removed fetchAlerts - now handled by store
+  // Removed fetchAlerts - now handled by store (checkAlerts lee las alertas
+  // vigentes del store en cada ciclo, no hace falta sincronizar nada aquí)
 
   const fetchAvailablePlayers = async () => {
     try {
@@ -98,13 +81,8 @@ const AlertManager = () => {
   };
 
   const handleCreateAlert = async () => {
-    if (!newAlert.playerId || !newAlert.discordWebhook) {
-      toast.error('Por favor selecciona un jugador y configura el webhook de Discord');
-      return;
-    }
-
-    if (!discordService.isValidWebhookUrl(newAlert.discordWebhook)) {
-      toast.error('La URL del webhook de Discord no es válida');
+    if (!newAlert.playerId) {
+      toast.error('Por favor selecciona un jugador');
       return;
     }
 
@@ -121,15 +99,13 @@ const AlertManager = () => {
         targetDate: '',
         targetValue: '',
         message: '',
-        enabled: true,
-        notificationMethods: ['discord'],
-        discordWebhook: ''
+        enabled: true
       });
 
       setShowCreateAlert(false);
 
       // Start monitoring if not already started
-      if (!alertMonitoringService.getStatus().isMonitoring) {
+      if (!isMonitoring) {
         handleStartMonitoring();
       }
 
@@ -191,35 +167,13 @@ const AlertManager = () => {
   // handleStartMonitoring function moved above to avoid no-use-before-define
 
   const handleStopMonitoring = () => {
-    alertMonitoringService.stopMonitoring();
+    stopMonitoring();
     toast.success('🛑 Monitoreo detenido');
-  };
-
-  const testWebhook = async (webhookUrl) => {
-    if (!webhookUrl) {
-      toast.error('Ingresa una URL de webhook');
-      return;
-    }
-
-    if (!discordService.isValidWebhookUrl(webhookUrl)) {
-      toast.error('La URL del webhook no es válida');
-      return;
-    }
-
-    setIsTestingWebhook(true);
-    try {
-      await discordService.testWebhook(webhookUrl);
-      toast.success('✅ Webhook de Discord funciona correctamente!');
-    } catch (error) {
-      toast.error(`❌ Error al probar webhook: ${error.message}`);
-    } finally {
-      setIsTestingWebhook(false);
-    }
   };
 
   const testAlert = async (alert) => {
     try {
-      await alertMonitoringService.testAlert(alert);
+      await storeTestAlert(alert);
       toast.success(`🧪 Alerta de prueba enviada para ${alert.playerName}`);
     } catch (error) {
       toast.error('❌ Error al probar la alerta');
@@ -256,7 +210,7 @@ const AlertManager = () => {
             Nueva Alerta
           </button>
 
-          {alertMonitoringService.getStatus().isMonitoring ? (
+          {isMonitoring ? (
             <button
               onClick={handleStopMonitoring}
               className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
@@ -418,14 +372,17 @@ const AlertManager = () => {
 
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => testAlert(alert)}
                       className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
                       title="Probar alerta"
+                      aria-label="Probar alerta"
                     >
                       <TestTube className="w-4 h-4" />
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleToggleAlert(alert.id)}
                       className={`p-2 rounded-lg transition-colors ${
                         alert.enabled
@@ -433,14 +390,17 @@ const AlertManager = () => {
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
                       title={alert.enabled ? 'Pausar alerta' : 'Activar alerta'}
+                      aria-label={alert.enabled ? 'Pausar alerta' : 'Activar alerta'}
                     >
                       {alert.enabled ? <Settings className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleDeleteAlert(alert.id)}
                       className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
                       title="Eliminar alerta"
+                      aria-label="Eliminar alerta"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -554,40 +514,6 @@ const AlertManager = () => {
                   </div>
                 )}
 
-                {/* Discord Webhook */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Discord Webhook URL
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={newAlert.discordWebhook}
-                      onChange={(e) => setNewAlert(prev => ({ ...prev, discordWebhook: e.target.value }))}
-                      className="flex-1 input-field"
-                      placeholder="https://discord.com/api/webhooks/..."
-                    />
-                    <button
-                      type="button"
-                      onClick={() => testWebhook(newAlert.discordWebhook)}
-                      disabled={!newAlert.discordWebhook || isTestingWebhook}
-                      className="px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white rounded-lg transition-colors text-sm"
-                    >
-                      {isTestingWebhook ? '...' : 'Probar'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    <a
-                      href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:text-blue-600"
-                    >
-                      ¿Cómo crear un webhook de Discord?
-                    </a>
-                  </p>
-                </div>
-
                 {/* Message */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -606,7 +532,7 @@ const AlertManager = () => {
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={handleCreateAlert}
-                    disabled={!newAlert.playerId || !newAlert.discordWebhook}
+                    disabled={!newAlert.playerId}
                     className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Crear Alerta

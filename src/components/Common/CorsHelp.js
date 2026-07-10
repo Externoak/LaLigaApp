@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useTransition, useSpring, animated } from '@react-spring/web';
+import { motion, AnimatePresence } from '../../utils/motionShim';
 import {
   HelpCircle,
   X,
@@ -15,9 +15,6 @@ import {
 const CorsHelp = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [copiedText, setCopiedText] = useState('');
-
-  const overlay = useTransition(isOpen, { from: { opacity: 0 }, enter: { opacity: 1 }, leave: { opacity: 0 } });
-  const modalSpring = useSpring({ from: { opacity: 0, transform: 'scale(0.9)' }, to: { opacity: isOpen ? 1 : 0, transform: isOpen ? 'scale(1)' : 'scale(0.9)' } });
 
   const copyToClipboard = async (text, label) => {
     try {
@@ -82,10 +79,10 @@ app.use('/api', async (req, res) => {
   try {
     const response = await axios({
       method: req.method,
-      url: \`https://api-fantasy.llt-services.com/api\${req.path}\`,
+      url: \`https://fantasy-api.llt-services.com/api\${req.path}\`,
       headers: {
         ...req.headers,
-        host: 'api-fantasy.llt-services.com'
+        host: 'fantasy-api.llt-services.com'
       },
       data: req.body
     });
@@ -155,15 +152,13 @@ app.listen(3001, () => {
         <HelpCircle className="w-6 h-6" />
       </button>
 
-      {
-        overlay((style, item) => item ? (
-          <animated.div
-            style={style}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
             className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
             onClick={() => setIsOpen(false)}
           >
-            <animated.div
-              style={modalSpring}
+            <motion.div
               className="bg-white dark:bg-dark-card rounded-lg shadow-xl max-w-4xl max-h-[90vh] overflow-hidden w-full"
               onClick={e => e.stopPropagation()}
             >
@@ -234,7 +229,9 @@ app.listen(3001, () => {
                                   <code>{solution.code}</code>
                                 </pre>
                                 <button
+                                  type="button"
                                   onClick={() => copyToClipboard(solution.code, solution.id)}
+                                  aria-label="Copiar al portapapeles"
                                   className="absolute top-2 right-2 p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
                                 >
                                   {copiedText === solution.id ? (
@@ -253,7 +250,9 @@ app.listen(3001, () => {
                                         {key}:
                                       </span>
                                       <button
+                                        type="button"
                                         onClick={() => copyToClipboard(value, `${solution.id}-${key}`)}
+                                        aria-label="Copiar al portapapeles"
                                         className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-xs"
                                       >
                                         {copiedText === `${solution.id}-${key}` ? (
@@ -299,10 +298,10 @@ app.listen(3001, () => {
                   ))}
                 </div>
               </div>
-            </animated.div>
-          </animated.div>
-        ) : null)
-      }
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

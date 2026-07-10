@@ -193,7 +193,7 @@ const Login = () => {
     }
   }, []);
 
-  const { login } = useAuthStore();
+  const login = useAuthStore((state) => state.login);
 
   const handleEmailLogin = async () => {
     if (!email || !password) {

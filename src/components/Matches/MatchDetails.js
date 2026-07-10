@@ -358,7 +358,9 @@ const MatchDetails = ({ matchId, weekNumber, onClose, isOpen }) => {
                   </div>
                 </div>
                 <button
+                  type="button"
                   onClick={onClose}
+                  aria-label="Cerrar detalles del partido"
                   className="p-2 hover:bg-white/20 rounded-xl transition-colors text-white"
                 >
                   <X className="w-6 h-6" />

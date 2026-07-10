@@ -8,9 +8,16 @@ permissions:
   contents: read
   pull-requests: write
 
+# Cancel superseded runs when new commits are pushed to the PR
+concurrency:
+  group: pr-check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-check:
-    runs-on: windows-latest
+    # Web-only lint/test/build: ubuntu is much faster than windows here.
+    # The release workflow keeps windows because it packages the .exe.
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
@@ -19,14 +26,19 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm ci
+      run: npm ci --prefer-offline --no-audit --no-fund
 
     - name: Run ESLint
       run: npx eslint src
+      env:
+        CI: true
+
+    - name: Run tests
+      run: npm test -- --watchAll=false
       env:
         CI: true
 
@@ -38,7 +50,6 @@ jobs:
         GENERATE_SOURCEMAP: false
 
     - name: Check for build warnings
-      shell: powershell
       run: |
         echo "✅ Build and lint checks completed successfully with no errors or warnings"
         echo "::notice::Pull request build and lint checks passed"
@@ -50,7 +61,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "The application builds successfully without errors or warnings." >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "- **Node.js version**: 18" >> $GITHUB_STEP_SUMMARY
+        echo "- **Node.js version**: 20" >> $GITHUB_STEP_SUMMARY
         echo "- **ESLint check**: ✅ Passed" >> $GITHUB_STEP_SUMMARY
         echo "- **Build command**: npm run build" >> $GITHUB_STEP_SUMMARY
         echo "- **Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY

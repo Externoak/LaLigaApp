@@ -1,21 +1,13 @@
 // ✅ preload.js
-const { contextBridge, ipcRenderer, shell } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   apiRequest: (options) => ipcRenderer.invoke('api-request', options),
-  openExternal: (url) => shell.openExternal(url),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
-  // Update methods for updateService.js compatibility
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  // Auto-update (updateService.js)
   downloadAndInstallUpdate: (data) => ipcRenderer.invoke('download-and-install-update', data),
   restartApp: () => ipcRenderer.invoke('restart-app'),
-
-  // Update methods for electronUpdateService.js compatibility  
-  downloadUpdate: (options) => ipcRenderer.invoke('download-update', options),
-  extractUpdate: (options) => ipcRenderer.invoke('extract-update', options),
-  validateUpdate: (options) => ipcRenderer.invoke('validate-update', options),
-  replaceApp: (options) => ipcRenderer.invoke('replace-app', options),
-  rollbackUpdate: () => ipcRenderer.invoke('rollback-update'),
 
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   getServerAddresses: () => ipcRenderer.invoke('get-server-addresses'),

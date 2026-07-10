@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion } from '../../utils/motionShim';
 
 const LoadingSpinner = ({ size = 'default', fullScreen = false }) => {
   const sizeClasses = {
@@ -17,8 +17,10 @@ const LoadingSpinner = ({ size = 'default', fullScreen = false }) => {
   );
 
   if (fullScreen) {
+    // z-30 keeps the spinner below the modal/dialog layer (z-50+) so the
+    // startup update prompt, PlayerDetailModal, etc. always render on top.
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm z-50">
+      <div className="fixed inset-0 flex items-center justify-center bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm z-30">
         <div className="flex flex-col items-center gap-4">
           {spinner}
           <p className="text-gray-600 dark:text-gray-400">Cargando...</p>

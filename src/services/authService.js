@@ -3,12 +3,13 @@
  * Handles OAuth2 authentication with La Liga's B2C tenant
  */
 import { useAuthStore } from '../stores/authStore';
+import { parseJwtPayload } from '../utils/helpers';
 
 const AUTH_CONFIG = {
   CLIENT_ID: process.env.REACT_APP_LALIGA_CLIENT_ID || "6457fa17-1224-416a-b21a-ee6ce76e9bc0", // Google OAuth client ID
   EMAIL_CLIENT_ID: process.env.REACT_APP_LALIGA_EMAIL_CLIENT_ID || "af88bcff-1157-40a0-b579-030728aacf0b", // Email/password client ID
-  BASE_URL: "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token",
-  REFRESH_TOKEN_ENDPOINT: "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token?p=B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
+  BASE_URL: process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token",
+  REFRESH_TOKEN_ENDPOINT: (process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token") + "?p=B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
   POLICY: "B2C_1A_ResourceOwnerv2",
   REDIRECT_URI: "authredirect://com.lfp.laligafantasy",
   WEB_REDIRECT_URI: window.location.origin,
@@ -110,17 +111,7 @@ export async function refreshToken(refreshToken) {
  * @returns {Object|null} Decoded payload or null if failed
  */
 export function decodeJWT(token) {
-  if (!token) return null;
-  
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    
-    const payload = JSON.parse(atob(parts[1]));
-    return payload;
-  } catch (error) {
-    return null;
-  }
+  return parseJwtPayload(token);
 }
 
 /**
@@ -210,7 +201,8 @@ export function startPeriodicTokenRefresh(refreshCallback, intervalMinutes = 30)
     try {
       const authStore = useAuthStore?.getState?.();
       if (authStore && authStore.isAuthenticated && authStore.tokens?.refresh_token) {
-        // Only refresh if token will expire soon (within next hour)
+        // Only refresh if the token is inside isTokenExpired's 5-minute
+        // expiry window; otherwise this tick is a no-op.
         if (authStore.isTokenExpired()) {
           await refreshCallback();
         }
@@ -223,6 +215,68 @@ export function startPeriodicTokenRefresh(refreshCallback, intervalMinutes = 30)
   return intervalId;
 }
 
+/**
+ * Build a normalized token bundle from either a raw access_token string or
+ * a full OAuth2 token response. Extracted from authStore.login so the store
+ * can stay focused on state transitions.
+ *
+ * @param {string|Object} tokenOrData
+ * @returns {{ tokens: Object, user: Object }}
+ */
+export function buildLoginPayload(tokenOrData) {
+  let tokens;
+
+  if (typeof tokenOrData === 'string') {
+    tokens = {
+      access_token: tokenOrData,
+      token_type: 'Bearer',
+      expires_in: 86400,
+      expires_on: calculateTokenExpiration({ expires_in: 86400 }),
+    };
+  } else {
+    tokens = {
+      access_token: tokenOrData.access_token,
+      id_token: tokenOrData.id_token,
+      refresh_token: tokenOrData.refresh_token,
+      token_type: tokenOrData.token_type || 'Bearer',
+      expires_in: tokenOrData.expires_in || 86400,
+      expires_on: calculateTokenExpiration(tokenOrData),
+    };
+  }
+
+  const user = extractUserFromTokens(tokens);
+  return { tokens, user };
+}
+
+/**
+ * Fetch the current user record from the LaLiga API and merge it onto the
+ * JWT-derived user object. Returns the merged user, or `null` on failure.
+ * The error is re-thrown so callers can detect invalid_grant and react.
+ */
+export async function fetchCurrentUserProfile(jwtUser) {
+  // Lazy import to avoid circular deps with api.js (which imports authStore).
+  const { fantasyAPI } = await import('./api');
+  const userResponse = await fantasyAPI.getCurrentUser();
+  const apiUser = userResponse?.data;
+  if (!apiUser) return null;
+
+  return {
+    ...jwtUser,
+    userId: apiUser.id || apiUser.userId || apiUser.managerId,
+    id: apiUser.id || apiUser.userId || apiUser.managerId,
+    username: apiUser.username || apiUser.managerName || apiUser.name || apiUser.displayName,
+    displayName: apiUser.displayName || apiUser.managerName || apiUser.username || apiUser.name || jwtUser?.name,
+    managerName: apiUser.managerName || apiUser.displayName || apiUser.username || apiUser.name,
+    firstName: apiUser.firstName,
+    lastName: apiUser.lastName,
+    avatar: apiUser.avatar || apiUser.profileImage,
+    profile: apiUser.profile,
+    email: jwtUser?.email || apiUser.email,
+    name: apiUser.managerName || apiUser.displayName || apiUser.username || apiUser.name || jwtUser?.name,
+    given_name: jwtUser?.given_name || apiUser.firstName,
+  };
+}
+
 const authService = {
   getToken,
   refreshToken,
@@ -231,6 +285,8 @@ const authService = {
   isTokenExpired,
   calculateTokenExpiration,
   startPeriodicTokenRefresh,
+  buildLoginPayload,
+  fetchCurrentUserProfile,
   AUTH_CONFIG
 };
 

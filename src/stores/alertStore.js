@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { fantasyAPI } from '../services/api';
+import { fetchLeagueClauses } from '../utils/fetchAllTeamsData';
+import { queryClient } from '../utils/queryClient';
 import toast from 'react-hot-toast';
 
 export const useAlertStore = create(
@@ -157,48 +159,43 @@ export const useAlertStore = create(
         return updatedAlert;
       },
 
-      // Send notification through configured methods
+      // Send notification (in-app toast)
       sendNotification: async (alert) => {
-        const notificationPromises = [];
-
-        // Discord notification
-        if (alert.notificationMethods?.includes('discord') && alert.discordWebhook) {
-          const { DiscordNotificationService } = await import('../services/discordNotificationService');
-          const discordService = new DiscordNotificationService();
-          notificationPromises.push(
-            discordService.sendAlert(alert.discordWebhook, alert)
-          );
-        }
-
-        // Toast notification (in-app)
         const alertTypeText = {
-          'clause_available': 'Cláusula disponible',
-          'market_listing': 'En el mercado',
-          'price_change': 'Cambio de precio'
+          'clause_available': '🛡️ Cláusula disponible',
+          'clause_unlock': '🔓 Cláusula desbloqueada',
+          'market_listing': '🏪 En el mercado',
+          'price_change': '💰 Cambio de precio'
         };
 
         toast.success(
-          `🔔 ${alert.playerName}: ${alertTypeText[alert.type] || 'Alerta'}!`,
-          { duration: 5000 }
+          `${alertTypeText[alert.type] || '🔔 Alerta'}: ${alert.playerName}`,
+          { duration: 8000 }
         );
+      },
 
-        try {
-          await Promise.all(notificationPromises);
-        } catch (error) {
-          toast.error('❌ Error enviando notificación');
-        }
+      // Dispara la notificación de una alerta sin cambiar su estado (botón de prueba)
+      testAlert: async (alert) => {
+        await get().sendNotification({
+          ...alert,
+          triggerData: { isTest: true, testedAt: new Date().toISOString() }
+        });
       },
 
       // Start monitoring alerts
       startMonitoring: () => {
         if (get().isMonitoring) return;
-        
+
         set({ isMonitoring: true });
-        
-        // Check alerts every 30 seconds
+
+        // Primera pasada inmediata; después cada 2 minutos — los bloqueos de
+        // cláusula y el mercado cambian despacio, y un ciclo puede recorrer
+        // todos los equipos de la liga, así que un intervalo corto arriesga
+        // rate-limits (429).
+        get().checkAlerts();
         const checkInterval = setInterval(() => {
           get().checkAlerts();
-        }, 30000);
+        }, 120000);
 
         // Store interval ID for cleanup
         set({ monitoringInterval: checkInterval });
@@ -225,9 +222,14 @@ export const useAlertStore = create(
           return;
         }
 
+        // Per-cycle fetch cache: N alerts on the same league share one
+        // getClauses/getMarket call instead of N (getClauses alone walks
+        // every team in the league).
+        const fetchCache = new Map();
+
         for (const alert of activeAlerts) {
           try {
-            await get().checkSingleAlert(alert);
+            await get().checkSingleAlert(alert, fetchCache);
           } catch (error) {
           }
         }
@@ -235,26 +237,29 @@ export const useAlertStore = create(
         set({ lastCheckTime: new Date().toISOString() });
       },
 
-      // Check a single alert
-      checkSingleAlert: async (alert) => {
+      // Check a single alert. Cada check devuelve un objeto con los datos del
+      // disparo (o null), que se guarda en la alerta vía triggerData.
+      checkSingleAlert: async (alert, fetchCache = new Map()) => {
         try {
-          let isTriggered = false;
+          let triggerData = null;
 
           switch (alert.type) {
             case 'clause_available':
-              isTriggered = await get().checkClauseAlert(alert);
+            case 'clause_unlock': // tipo legado: mismas condiciones
+              triggerData = await get().checkClauseAlert(alert, fetchCache);
               break;
             case 'market_listing':
-              isTriggered = await get().checkMarketAlert(alert);
+              triggerData = await get().checkMarketAlert(alert, fetchCache);
               break;
             case 'price_change':
-              isTriggered = await get().checkPriceAlert(alert);
+              triggerData = await get().checkPriceAlert(alert);
               break;
             default:
           }
 
-          if (isTriggered) {
+          if (triggerData) {
             await get().triggerAlert(alert.id, {
+              ...triggerData,
               checkedAt: new Date().toISOString(),
               type: alert.type
             }, alert.userId, alert.leagueId);
@@ -265,10 +270,16 @@ export const useAlertStore = create(
       },
 
       // Check clause availability
-      checkClauseAlert: async (alert) => {
+      checkClauseAlert: async (alert, fetchCache = new Map()) => {
         try {
-          if (!alert.leagueId) return false;
-          const clausesResponse = await fantasyAPI.getClauses(alert.leagueId);
+          if (!alert.leagueId) return null;
+          const cacheKey = `clauses:${alert.leagueId}`;
+          if (!fetchCache.has(cacheKey)) {
+            // Walk de plantillas vía la caché compartida ['teamData'] — los
+            // ciclos de 2 min tocan red como mucho cada 15 min.
+            fetchCache.set(cacheKey, fetchLeagueClauses(queryClient, alert.leagueId));
+          }
+          const clausesResponse = await fetchCache.get(cacheKey);
           const clauses = clausesResponse?.data || [];
 
           const playerClause = clauses.find(clause =>
@@ -276,51 +287,66 @@ export const useAlertStore = create(
             String(clause.player?.id) === String(alert.playerId)
           );
 
-          return Boolean(playerClause && playerClause.isActive !== false);
+          if (!playerClause || playerClause.isActive === false) return null;
+          return {
+            clauseValue: playerClause.clauseValue || playerClause.value,
+            isActive: true
+          };
         } catch (error) {
-          return false;
+          return null;
         }
       },
 
       // Check market listing
-      checkMarketAlert: async (alert) => {
+      checkMarketAlert: async (alert, fetchCache = new Map()) => {
         try {
-          if (!alert.leagueId) return false;
-          const marketResponse = await fantasyAPI.getMarket(alert.leagueId);
+          if (!alert.leagueId) return null;
+          const cacheKey = `market:${alert.leagueId}`;
+          if (!fetchCache.has(cacheKey)) {
+            fetchCache.set(cacheKey, fantasyAPI.getMarket(alert.leagueId));
+          }
+          const marketResponse = await fetchCache.get(cacheKey);
           const marketEntries = marketResponse?.data || [];
 
           const pid = String(alert.playerId);
-          return marketEntries.some(entry =>
-            String(entry?.id) === pid ||
-            String(entry?.playerId) === pid ||
-            String(entry?.player?.id) === pid ||
-            String(entry?.playerMaster?.id) === pid
+          const entry = marketEntries.find(e =>
+            String(e?.id) === pid ||
+            String(e?.playerId) === pid ||
+            String(e?.player?.id) === pid ||
+            String(e?.playerMaster?.id) === pid
           );
+
+          if (!entry) return null;
+          const pm = entry.playerMaster || entry.player || entry;
+          return {
+            inMarket: true,
+            marketPrice: entry.salePrice || pm?.marketValue || pm?.price
+          };
         } catch (error) {
-          return false;
+          return null;
         }
       },
 
       // Check price change
       checkPriceAlert: async (alert) => {
         try {
-          if (!alert.leagueId) return false;
+          if (!alert.leagueId) return null;
           const playerResponse = await fantasyAPI.getPlayerDetails(alert.playerId, alert.leagueId);
           const player = playerResponse?.data || playerResponse;
-          
-          if (!player || !alert.targetValue) return false;
+
+          if (!player || !alert.targetValue) return null;
 
           const currentPrice = player.marketValue || player.price || 0;
           const targetPrice = parseFloat(alert.targetValue);
 
           // Check if price has reached target (either increase or decrease)
           if (Math.abs(currentPrice - targetPrice) <= (targetPrice * 0.01)) { // 1% tolerance
-            return true;
+            return { currentPrice, targetPrice };
           }
 
-          return false;
+          return null;
         } catch (error) {
-          return false;
+          return null;
         }
       },
 

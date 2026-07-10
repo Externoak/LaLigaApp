@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from '../../utils/motionShim';
+import { resolveProxyOrigin } from '../../services/api';
 
 const ChangelogModal = ({ isOpen, onClose }) => {
   const [changelog, setChangelog] = useState('');
@@ -8,21 +9,14 @@ const ChangelogModal = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     if (isOpen) {
-      // Fetch version.json from GitHub (same as updateService)
+      // version.json vive en GitHub; lo pedimos SIEMPRE vía el proxy unificado
+      // (/api/proxy-github) para evitar CORS. En dev el React corre en :3006
+      // pero el proxy está en :3005, así que una ruta relativa caía en :3006 y
+      // devolvía 404; resolveProxyOrigin (api.js) resuelve la base correcta.
       const updateCheckUrl = process.env.REACT_APP_UPDATE_CHECK_URL || 'https://raw.githubusercontent.com/Externoak/LaLigaApp/master/version.json';
+      const fetchUrl = `${resolveProxyOrigin()}/api/proxy-github?url=${encodeURIComponent(updateCheckUrl)}`;
 
-      // Check if we're in Electron or browser
-      const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
-
-      // Construct the fetch URL - use proxy for browser
-      const fetchUrl = isElectron ? updateCheckUrl : `/api/proxy-github?url=${encodeURIComponent(updateCheckUrl)}`;
-
-      fetch(fetchUrl, {
-        headers: {
-          'Accept': 'application/json',
-          ...(isElectron ? { 'User-Agent': 'LaLigaWeb-ChangelogViewer' } : {})
-        }
-      })
+      fetch(fetchUrl, { headers: { 'Accept': 'application/json' } })
         .then(res => {
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -116,7 +110,9 @@ const ChangelogModal = ({ isOpen, onClose }) => {
                 </div>
               </div>
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Cerrar"
                 className="p-2 rounded-lg hover:bg-white/50 dark:hover:bg-gray-700/50 transition-colors"
               >
                 <X className="w-5 h-5" />

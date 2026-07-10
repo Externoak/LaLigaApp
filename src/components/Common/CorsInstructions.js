@@ -3,7 +3,7 @@ import { AlertTriangle, Chrome, Download, Shield, ExternalLink, LogOut } from 'l
 import { useAuthStore } from '../../stores/authStore';
 
 const CorsInstructions = ({ onTryAgain }) => {
-  const { logout } = useAuthStore();
+  const logout = useAuthStore((state) => state.logout);
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex items-center justify-center px-4">
       <div className="card p-8 w-full max-w-2xl mx-auto">

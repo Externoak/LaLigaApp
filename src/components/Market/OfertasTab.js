@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from '../../utils/motionShim';
 import { createPortal } from 'react-dom';
-import { TrendingUp, Users, X, Check, AlertCircle } from 'lucide-react';
+import { Users, X, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import teamService from '../../services/teamService';
 import { fantasyAPI } from '../../services/api';
 import LoadingSpinner from '../Common/LoadingSpinner';
@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/authStore';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateAfterOfferResponse } from '../../utils/cacheInvalidation';
+import { formatCurrency } from '../../utils/helpers';
 
 const OfertasTab = () => {
   const [playersWithOffers, setPlayersWithOffers] = useState([]);
@@ -16,7 +17,8 @@ const OfertasTab = () => {
   const [error, setError] = useState(null);
   const [confirmModal, setConfirmModal] = useState(null); // { type: 'accept'|'decline', player, offer }
   const [processing, setProcessing] = useState(false);
-  const { user, leagueId } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
+  const leagueId = useAuthStore((state) => state.leagueId);
   const queryClient = useQueryClient();
 
   const loadOffersData = useCallback(async () => {
@@ -97,17 +99,6 @@ const OfertasTab = () => {
   useEffect(() => {
     loadOffersData();
   }, [loadOffersData]);
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency: 'EUR',
-      maximumFractionDigits: 0
-    }).format(amount);
-  };
-
-
-  
 
   const handleAcceptOffer = async () => {
     if (!confirmModal) return;
@@ -198,8 +189,9 @@ const OfertasTab = () => {
         </p>
         <button
           onClick={loadOffersData}
-          className="mt-4 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors"
+          className="mt-4 bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2 mx-auto"
         >
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           Actualizar
         </button>
       </div>
@@ -222,7 +214,7 @@ const OfertasTab = () => {
           onClick={loadOffersData}
           className="bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg transition-colors text-sm flex items-center gap-1"
         >
-          <TrendingUp className="w-4 h-4" />
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           Actualizar
         </button>
       </div>
@@ -315,16 +307,20 @@ const OfertasTab = () => {
                     {offer.status === 'pending' && (
                       <div className="flex gap-2 ml-3">
                         <button
+                          type="button"
                           onClick={() => setConfirmModal({ type: 'accept', player, offer })}
                           className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-lg transition-colors"
                           title="Aceptar oferta"
+                          aria-label="Aceptar oferta"
                         >
                           <Check className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => setConfirmModal({ type: 'decline', player, offer })}
                           className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg transition-colors"
                           title="Rechazar oferta"
+                          aria-label="Rechazar oferta"
                         >
                           <X className="w-4 h-4" />
                         </button>

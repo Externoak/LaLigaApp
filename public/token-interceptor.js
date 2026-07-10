@@ -85,9 +85,9 @@ class LaLigaTokenInterceptor {
   }
 
   processTokens(tokens) {
-        
-    // Send to main window
-    window.postMessage({ type: 'LALIGA_TOKENS_CAPTURED', tokens }, '*');
+
+    // Send to main window (same-origin only)
+    window.postMessage({ type: 'LALIGA_TOKENS_CAPTURED', tokens }, window.location.origin);
     
     // Store as backup
     try {
@@ -162,13 +162,13 @@ class LaLigaTokenInterceptor {
         // Send tokens to main window
         this.sendTokensToMainWindow(tokenData);
         
-        // Also try to send to opener if we're in a popup
+        // Also try to send to opener if we're in a popup (same-origin only)
         if (window.opener) {
           try {
-            window.opener.postMessage({ 
-              type: 'LALIGA_TOKENS_CAPTURED', 
-              tokens: tokenData 
-            }, '*');
+            window.opener.postMessage({
+              type: 'LALIGA_TOKENS_CAPTURED',
+              tokens: tokenData
+            }, window.location.origin);
                       } catch (e) {
                       }
         }
@@ -184,9 +184,9 @@ class LaLigaTokenInterceptor {
   }
 
   sendTokensToMainWindow(tokens) {
-    // Send message to main window
+    // Send message to main window (same-origin only)
     try {
-      window.postMessage({ type: 'LALIGA_TOKENS_CAPTURED', tokens }, '*');
+      window.postMessage({ type: 'LALIGA_TOKENS_CAPTURED', tokens }, window.location.origin);
           } catch (e) {
           }
     
@@ -238,12 +238,12 @@ class LaLigaTokenInterceptor {
                           const tokens = JSON.parse(text);
                           if (tokens.access_token && tokens.id_token) {
                                                         
-                            // Send to parent
+                            // Send to parent (app origin only)
                             if (window.opener) {
-                              window.opener.postMessage({ 
-                                type: 'LALIGA_TOKENS_CAPTURED', 
-                                tokens 
-                              }, '*');
+                              window.opener.postMessage({
+                                type: 'LALIGA_TOKENS_CAPTURED',
+                                tokens
+                              }, '${window.location.origin}');
                                                           }
                           }
                         } catch (e) {

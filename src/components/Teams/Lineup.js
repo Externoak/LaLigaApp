@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { useParams } from 'react-router-dom';
 import { Users, Calendar, ArrowLeft, ArrowRight, RefreshCw, User, Target, ChevronDown, Check } from 'lucide-react';
@@ -6,187 +7,110 @@ import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
 import { useCurrentWeek } from '../../hooks/useCurrentWeek';
+import { setImageFallback, getPositionName, extractArray } from '../../utils/helpers';
+import { flattenPositionKeyedPlayers } from '../../utils/formationUtils';
+
+// Normaliza la respuesta de getTeamLineup a { players: [], formationName }
+// aplanando las distintas formas en que llega la formación.
+const processLineupResponse = (response) => {
+  let lineup = response?.data ? response.data : response;
+
+  // Handle the real API structure with formation object containing position arrays
+  if (lineup?.formation && typeof lineup.formation === 'object') {
+    const formationData = lineup.formation;
+    lineup = { ...lineup };
+    lineup.players = flattenPositionKeyedPlayers(formationData);
+    lineup.formationName = formationData.tacticalFormation || lineup.tacticalFormation;
+    delete lineup.formation;
+  }
+  // Handle legacy players data structures (players keyed by position)
+  else if (lineup && typeof lineup.players === 'object' && !Array.isArray(lineup.players)) {
+    lineup = { ...lineup, players: flattenPositionKeyedPlayers(lineup.players) };
+  }
+
+  // Handle tacticalFormation field
+  if (lineup?.tacticalFormation && !lineup.formationName) {
+    lineup = { ...lineup, formationName: lineup.tacticalFormation };
+  }
+
+  // Sanitize the lineup data to prevent React rendering errors
+  return {
+    ...lineup,
+    players: lineup?.players || [],
+    formationName: lineup?.formationName || lineup?.tacticalFormation
+  };
+};
 
 const Lineup = ({ teamId: propTeamId }) => {
   const { teamId: urlTeamId } = useParams();
-  const [lineupData, setLineupData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedWeek, setSelectedWeek] = useState(null);
   const [, setCurrentWeek] = useState(1);
   const [inputWeek, setInputWeek] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState(urlTeamId || propTeamId || null);
-  const [leagueTeams, setLeagueTeams] = useState([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Player detail modal states
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false);
 
-  const { leagueId, user } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
+  const user = useAuthStore((state) => state.user);
 
   // Use shared hook for current week
-  const { data: currentWeekData } = useCurrentWeek();
+  const { weekNumber: currentWeekNumber } = useCurrentWeek();
 
   // Update selected week when current week data is available
   useEffect(() => {
-    if (currentWeekData && !selectedWeek) {
-      const week = currentWeekData.data?.weekNumber || currentWeekData.weekNumber || 1;
-      setCurrentWeek(week);
-      setSelectedWeek(week);
+    if (currentWeekNumber && !selectedWeek) {
+      setCurrentWeek(currentWeekNumber);
+      setSelectedWeek(currentWeekNumber);
     }
-  }, [currentWeekData, selectedWeek]);
+  }, [currentWeekNumber, selectedWeek]);
 
-  const fetchLeagueTeams = useCallback(async () => {
-    try {
-      const response = await fantasyAPI.getLeagueRanking(leagueId);
+  // Clasificación vía la query compartida (misma caché que el resto de vistas)
+  const {
+    data: standings,
+    isLoading: standingsLoading,
+    error: standingsError,
+  } = useQuery({
+    queryKey: ['standings', leagueId],
+    queryFn: () => fantasyAPI.getLeagueRanking(leagueId),
+    enabled: !!leagueId,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
+  const leagueTeams = useMemo(() => extractArray(standings), [standings]);
 
-      // Handle different API response structures
-      let teams = [];
-      if (Array.isArray(response)) {
-        teams = response;
-      } else if (response?.data && Array.isArray(response.data)) {
-        teams = response.data;
-      } else if (response?.elements && Array.isArray(response.elements)) {
-        teams = response.elements;
-      } else if (response && typeof response === 'object') {
-        const arrayProperty = Object.values(response).find(val => Array.isArray(val));
-        if (arrayProperty) {
-          teams = arrayProperty;
-        }
-      }
-
-      setLeagueTeams(teams);
-
-      // If no team selected, select user's team or first team
-      if (!selectedTeamId && teams.length > 0) {
-        const userTeam = teams.find(team => {
-          const teamUserId = team.userId || team.team?.userId || team.team?.manager?.id;
-          return teamUserId && user?.userId && teamUserId.toString() === user.userId.toString();
-        });
-        const teamId = userTeam?.id || userTeam?.team?.id || teams[0]?.id || teams[0]?.team?.id;
-        setSelectedTeamId(teamId);
-      }
-    } catch (error) {
-      setError('Error al cargar los equipos de la liga');
-      setLoading(false);
-    }
-  }, [leagueId, user, selectedTeamId]);
-
-  const fetchLineupData = useCallback(async () => {
-    // Validación adicional para evitar llamadas con null
-    if (!selectedTeamId || !selectedWeek || !leagueId) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fantasyAPI.getTeamLineup(selectedTeamId, selectedWeek);
-      // Extract lineup data from different API response structures
-      let lineup = response;
-      if (response?.data) {
-        lineup = response.data;
-      }
-
-      // Handle the real API structure with formation object containing position arrays
-      if (lineup?.formation && typeof lineup.formation === 'object') {
-        const formationData = lineup.formation;
-        const playersArray = [];
-
-        // Extract players from formation structure: goalkeeper, defender, midfield, striker
-        if (formationData.goalkeeper && Array.isArray(formationData.goalkeeper)) {
-          playersArray.push(...formationData.goalkeeper.map(player => ({
-            ...player,
-            positionId: 1,
-            originalPosition: 'goalkeeper'
-          })));
-        }
-
-        if (formationData.defender && Array.isArray(formationData.defender)) {
-          playersArray.push(...formationData.defender.map(player => ({
-            ...player,
-            positionId: 2,
-            originalPosition: 'defender'
-          })));
-        }
-
-        if (formationData.midfield && Array.isArray(formationData.midfield)) {
-          playersArray.push(...formationData.midfield.map(player => ({
-            ...player,
-            positionId: 3,
-            originalPosition: 'midfield'
-          })));
-        }
-
-        if (formationData.striker && Array.isArray(formationData.striker)) {
-          playersArray.push(...formationData.striker.map(player => ({
-            ...player,
-            positionId: 4,
-            originalPosition: 'striker'
-          })));
-        }
-
-        // Set the processed players and formation name
-        lineup.players = playersArray;
-        lineup.formationName = formationData.tacticalFormation || lineup.tacticalFormation;
-
-        // Clean up the formation object to prevent rendering issues
-        delete lineup.formation;
-      }
-      // Handle legacy players data structures
-      else if (lineup && typeof lineup.players === 'object' && !Array.isArray(lineup.players)) {
-        // If players is an object with goalkeeper, defender, etc.
-        const playersArray = [];
-        Object.entries(lineup.players).forEach(([position, playersList]) => {
-          if (Array.isArray(playersList)) {
-            const positionId = position === 'goalkeeper' ? 1 :
-                             position === 'defender' ? 2 :
-                             position === 'midfield' ? 3 :
-                             position === 'striker' ? 4 : 1;
-            playersArray.push(...playersList.map(player => ({
-              ...player,
-              positionId,
-              originalPosition: position
-            })));
-          }
-        });
-        lineup.players = playersArray;
-      }
-
-      // Handle tacticalFormation field
-      if (lineup?.tacticalFormation && !lineup.formationName) {
-        lineup.formationName = lineup.tacticalFormation;
-      }
-
-      // Sanitize the lineup data to prevent React rendering errors
-      const sanitizedLineup = {
-        ...lineup,
-        players: lineup?.players || [],
-        formationName: lineup?.formationName || lineup?.tacticalFormation
-      };
-
-      setLineupData(sanitizedLineup);
-    } catch (err) {
-      setError('Error al cargar la alineación');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedTeamId, selectedWeek, leagueId]);
-
+  // If no team selected, select user's team or first team
   useEffect(() => {
-    if (leagueId) {
-      fetchLeagueTeams();
+    if (!selectedTeamId && leagueTeams.length > 0) {
+      const userTeam = leagueTeams.find(team => {
+        const teamUserId = team.userId || team.team?.userId || team.team?.manager?.id;
+        return teamUserId && user?.userId && teamUserId.toString() === user.userId.toString();
+      });
+      const teamId = userTeam?.id || userTeam?.team?.id || leagueTeams[0]?.id || leagueTeams[0]?.team?.id;
+      setSelectedTeamId(teamId);
     }
-  }, [leagueId, fetchLeagueTeams]);
+  }, [leagueTeams, selectedTeamId, user?.userId]);
 
-  useEffect(() => {
-    if (selectedTeamId && selectedWeek !== null && leagueId) {
-      fetchLineupData();
-    }
-  }, [selectedTeamId, selectedWeek, leagueId, fetchLineupData]);
+  // Alineación de la jornada seleccionada
+  const {
+    data: lineupData,
+    isLoading: lineupLoading,
+    error: lineupError,
+    refetch: fetchLineupData,
+  } = useQuery({
+    queryKey: ['lineup', selectedTeamId, selectedWeek],
+    queryFn: async () => processLineupResponse(await fantasyAPI.getTeamLineup(selectedTeamId, selectedWeek)),
+    enabled: !!selectedTeamId && !!selectedWeek && !!leagueId,
+    staleTime: 2 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+  });
+
+  const loading = standingsLoading || lineupLoading;
+  const error = lineupError
+    ? 'Error al cargar la alineación'
+    : (standingsError ? 'Error al cargar los equipos de la liga' : null);
 
   // Update input value when selectedWeek changes
   useEffect(() => {
@@ -235,16 +159,6 @@ const Lineup = ({ teamId: propTeamId }) => {
   const closePlayerModal = () => {
     setIsPlayerModalOpen(false);
     setSelectedPlayer(null);
-  };
-
-  const getPositionName = (positionId) => {
-    const positions = {
-      1: 'Portero',
-      2: 'Defensa',
-      3: 'Centrocampista',
-      4: 'Delantero'
-    };
-    return positions[positionId] || 'Desconocido';
   };
 
   // Get points for a specific week from player's lastStats
@@ -382,7 +296,7 @@ const Lineup = ({ teamId: propTeamId }) => {
             <div className="text-center space-y-4">
               <div className="relative">
                 <div className="w-20 h-20 mx-auto mb-4">
-                  <div className="w-full h-full border-4 border-gray-200 dark:border-gray-700 rounded-full animate-spin" style={{'border-top-color': '#0A6522'}}></div>
+                  <div className="w-full h-full border-4 border-gray-200 dark:border-gray-700 rounded-full animate-spin" style={{ borderTopColor: '#0A6522' }}></div>
                 </div>
               </div>
               <div className="space-y-2">
@@ -454,9 +368,12 @@ const Lineup = ({ teamId: propTeamId }) => {
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Compact Header & Controls */}
       <div className="bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-6 shadow-lg border border-gray-100 dark:border-gray-700">
-        <div className="flex flex-col lg:flex-row lg:items-center gap-6">
-          {/* Title Section */}
-          <div className="flex items-center gap-4 flex-shrink-0">
+        {/* Mismo breakpoint (2xl) que los controles internos: entre lg y 2xl
+            los controles siguen a w-full, y ponerlos en fila con el título
+            (que no encoge) desbordaba el botón Actualizar fuera del card. */}
+        <div className="flex flex-col 2xl:flex-row 2xl:items-center gap-6">
+          {/* Title Section (min-w-0: puede encoger; la meta hace wrap) */}
+          <div className="flex items-center gap-4 min-w-0">
             <div className="p-2 rounded-xl" style={{background: 'linear-gradient(135deg, rgba(10, 101, 34, 0.1), rgba(10, 101, 34, 0.2))'}}>
               <Users className="w-6 h-6" style={{color: '#0A6522'}} />
             </div>
@@ -464,7 +381,7 @@ const Lineup = ({ teamId: propTeamId }) => {
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                 Alineación Táctica
               </h1>
-              <div className="flex items-center gap-4 text-sm mt-1">
+              <div className="flex items-center gap-4 text-sm mt-1 flex-wrap">
                 {selectedTeam && (
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{backgroundColor: '#0A6522'}}></div>
@@ -491,9 +408,11 @@ const Lineup = ({ teamId: propTeamId }) => {
           </div>
 
           {/* Controls Section */}
-          <div className="flex flex-col 2xl:flex-row items-center gap-3 2xl:ml-auto w-full 2xl:w-auto">
-            {/* Modern Team Selector */}
-            <div className="w-full 2xl:w-auto min-w-0 2xl:min-w-[420px] relative">
+          <div className="flex flex-col 2xl:flex-row items-center gap-3 2xl:ml-auto w-full 2xl:w-auto min-w-0 flex-shrink-0 2xl:flex-shrink">
+            {/* Selector de equipo: ancho FIJO en 2xl — sin él, el texto
+                "Equipo • Manager" no se trunca y empuja el botón Actualizar
+                fuera del card con nombres largos. */}
+            <div className="w-full 2xl:w-[420px] relative">
               <div className="relative">
                 {/* Trigger Button */}
                 <button
@@ -734,7 +653,13 @@ const Lineup = ({ teamId: propTeamId }) => {
                                       className="w-18 h-18 rounded-full object-cover border-2 border-white shadow-sm"
                                       onError={(e) => {
                                         e.target.style.display = 'none';
-                                        e.target.parentNode.innerHTML = `<div class="w-16 h-16 rounded-full flex items-center justify-center" style="background-color: #0A6522; opacity: 0.2;"><span class="text-sm font-bold" style="color: #0A6522;">${(player.playerMaster?.nickname || player.playerMaster?.name || player.name || player.nickname || 'JJ').split(' ').map(n => n.charAt(0)).join('').slice(0, 2)}</span></div>`;
+                                        setImageFallback(e.target.parentNode, {
+                                          className: 'w-16 h-16 rounded-full flex items-center justify-center',
+                                          style: 'background-color: #0A6522; opacity: 0.2;',
+                                          textClassName: 'text-sm font-bold',
+                                          textStyle: 'color: #0A6522;',
+                                          text: (player.playerMaster?.nickname || player.playerMaster?.name || player.name || player.nickname || 'JJ').split(' ').map(n => n.charAt(0)).join('').slice(0, 2),
+                                        });
                                       }}
                                     />
                                   ) : (
@@ -926,7 +851,12 @@ const Lineup = ({ teamId: propTeamId }) => {
                                         className="w-12 h-12 rounded-full object-cover"
                                         onError={(e) => {
                                           e.target.style.display = 'none';
-                                          e.target.parentNode.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center" style="background: linear-gradient(135deg, #0A6522, #083d1a); color: white;"><span class="text-sm font-bold">${(player.playerMaster?.nickname || player.playerMaster?.name || player.name || player.nickname || 'JJ').split(' ').map(n => n.charAt(0)).join('').slice(0, 2)}</span></div>`;
+                                          setImageFallback(e.target.parentNode, {
+                                            className: 'w-12 h-12 rounded-full flex items-center justify-center',
+                                            style: 'background: linear-gradient(135deg, #0A6522, #083d1a); color: white;',
+                                            textClassName: 'text-sm font-bold',
+                                            text: (player.playerMaster?.nickname || player.playerMaster?.name || player.name || player.nickname || 'JJ').split(' ').map(n => n.charAt(0)).join('').slice(0, 2),
+                                          });
                                         }}
                                       />
                                     ) : (

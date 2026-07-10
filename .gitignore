@@ -97,6 +97,10 @@ tmp/
 temp/
 .tmp/
 
+# Auto-updater queue (electron/auto-updater.js writes it to the app root,
+# which in dev is this repo)
+pending-update.json
+
 # Editor directories and files
 .vscode/
 !.vscode/extensions.json
@@ -221,6 +225,7 @@ yarn.lock
 # Local History for Visual Studio Code
 .history/
 /.claude
+.claude.json
 
 # Markdown files (except README files)
 *.md

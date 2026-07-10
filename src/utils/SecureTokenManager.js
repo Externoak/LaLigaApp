@@ -1,3 +1,10 @@
+const logCryptoError = (stage, err) => {
+  // Surface crypto/IndexedDB failures so they show up in DevTools console
+  // instead of being silently swallowed. Stage identifies the call site.
+  // eslint-disable-next-line no-console
+  console.error(`[SecureTokenManager:${stage}]`, err);
+};
+
 class SecureTokenManager {
   constructor() {
     this.keyName = 'laliga-fantasy-key';
@@ -19,7 +26,7 @@ class SecureTokenManager {
     });
   }
 
-  async getStoredJwk() {
+  async getStoredKey() {
     try {
       const db = await this.openDB();
       return await new Promise((resolve, reject) => {
@@ -29,20 +36,25 @@ class SecureTokenManager {
         getReq.onsuccess = () => resolve(getReq.result || null);
         getReq.onerror = () => reject(getReq.error);
       });
-    } catch (_) { return null; }
+    } catch (err) {
+      logCryptoError('getStoredKey', err);
+      return null;
+    }
   }
 
-  async setStoredJwk(jwk) {
+  async setStoredKey(key) {
     try {
       const db = await this.openDB();
       await new Promise((resolve, reject) => {
         const tx = db.transaction(this.storeName, 'readwrite');
         const store = tx.objectStore(this.storeName);
-        const putReq = store.put(jwk, this.keyName);
+        const putReq = store.put(key, this.keyName);
         putReq.onsuccess = () => resolve();
         putReq.onerror = () => reject(putReq.error);
       });
-    } catch (_) { /* ignore */ }
+    } catch (err) {
+      logCryptoError('setStoredKey', err);
+    }
   }
 
   async generateEncryptionKey() {
@@ -57,23 +69,17 @@ class SecureTokenManager {
   async getOrCreateKey() {
     if (this._key) return this._key;
 
-    // Try to load persisted JWK from IndexedDB
-    try {
-      const jwk = await this.getStoredJwk();
-      if (jwk) {
-        this._key = await crypto.subtle.importKey(
-          'jwk', jwk, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']
-        );
-        return this._key;
-      }
-    } catch (_) { /* fallthrough */ }
+    // CryptoKey objects survive IndexedDB's structured clone, so the key can
+    // stay non-extractable (raw key material never readable from JS) and
+    // still persist across reloads.
+    const stored = await this.getStoredKey();
+    if (typeof CryptoKey !== 'undefined' && stored instanceof CryptoKey) {
+      this._key = stored;
+      return this._key;
+    }
 
-    // Generate and persist
     this._key = await this.generateEncryptionKey();
-    try {
-      const exported = await crypto.subtle.exportKey('jwk', this._key);
-      await this.setStoredJwk(exported);
-    } catch (_) { /* ignore */ }
+    await this.setStoredKey(this._key);
     return this._key;
   }
 
@@ -94,8 +100,8 @@ class SecureTokenManager {
         encrypted: Array.from(new Uint8Array(encrypted)),
         iv: Array.from(iv),
       };
-    } catch (error) {
-      // Encryption failed
+    } catch (err) {
+      logCryptoError('encryptToken', err);
       return null;
     }
   }
@@ -111,8 +117,8 @@ class SecureTokenManager {
 
       const decoder = new TextDecoder();
       return decoder.decode(decrypted);
-    } catch (error) {
-      // Decryption failed
+    } catch (err) {
+      logCryptoError('decryptToken', err);
       return null;
     }
   }

@@ -1,17 +1,26 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { Trophy, Star, TrendingUp } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
-import { formatNumber } from '../../utils/helpers';
+import { formatNumber, extractArray } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 
 const TopPlayers = () => {
   const { data: players, isLoading } = useQuery({
-    queryKey: ['players'],
+    queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 30 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
   });
+
+  // Sort players by points and get top 10 (memoized: ~3000 entradas)
+  const topPlayers = useMemo(() => (
+    extractArray(players)
+      .filter(player => player.points > 0) // Only players with points
+      .sort((a, b) => (b.points || 0) - (a.points || 0))
+      .slice(0, 10)
+  ), [players]);
 
   if (isLoading) {
     return (
@@ -25,22 +34,6 @@ const TopPlayers = () => {
       </div>
     );
   }
-
-  // Extract players data from different API response structures
-  let playersData = [];
-  if (Array.isArray(players)) {
-    playersData = players;
-  } else if (players?.data && Array.isArray(players.data)) {
-    playersData = players.data;
-  } else if (players?.elements && Array.isArray(players.elements)) {
-    playersData = players.elements;
-  }
-
-  // Sort players by points and get top 10
-  const topPlayers = playersData
-    .filter(player => player.points > 0) // Only players with points
-    .sort((a, b) => (b.points || 0) - (a.points || 0))
-    .slice(0, 10);
 
   const getPlayerName = (player) => {
     return player.nickname || player.name || 'Jugador';

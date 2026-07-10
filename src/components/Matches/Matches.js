@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
-import { Calendar, Clock, Trophy, Users, Eye, Shield } from 'lucide-react';
+import { Calendar, Clock, Trophy, Users, Eye, Shield, RefreshCw } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
+import { useCurrentWeek } from '../../hooks/useCurrentWeek';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
 import MatchDetails from './MatchDetails';
@@ -12,22 +13,15 @@ const Matches = () => {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [showMatchDetails, setShowMatchDetails] = useState(false);
 
-  // Fetch current week
-  const { data: currentWeek } = useQuery({
-    queryKey: ['currentWeek'],
-    queryFn: () => fantasyAPI.getCurrentWeek(),
-    retry: false,
-    staleTime: 30 * 60 * 1000, // 30 minutos - la jornada actual no cambia frecuentemente
-    gcTime: 60 * 60 * 1000, // 1 hora en caché
-  });
+  // Fetch current week (shared hook, normalized number)
+  const { weekNumber: actualWeekNumber } = useCurrentWeek();
 
   // Set default week when current week is loaded
   React.useEffect(() => {
-    if (currentWeek && !selectedWeek) {
-      const weekNumber = currentWeek.weekNumber || currentWeek.data?.weekNumber || 1;
-      setSelectedWeek(weekNumber);
+    if (actualWeekNumber && !selectedWeek) {
+      setSelectedWeek(actualWeekNumber);
     }
-  }, [currentWeek, selectedWeek]);
+  }, [actualWeekNumber, selectedWeek]);
 
   // Fetch matches for selected week
   const { data: matches, isLoading, error, refetch } = useQuery({
@@ -142,8 +136,9 @@ const Matches = () => {
         </div>
         <button
           onClick={() => refetch()}
-          className="btn-primary"
+          className="btn-primary flex items-center gap-2"
         >
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           Actualizar
         </button>
       </div>
@@ -156,7 +151,7 @@ const Matches = () => {
             Jornadas ({currentWeekNumber}/38)
           </h3>
 
-          {(currentWeek?.weekNumber === currentWeekNumber || currentWeek?.data?.weekNumber === currentWeekNumber) && (
+          {actualWeekNumber === currentWeekNumber && (
             <span className="px-2 py-1 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full text-xs font-medium">
               Actual
             </span>
@@ -167,7 +162,7 @@ const Matches = () => {
           {Array.from({ length: 38 }, (_, index) => {
             const jornadaNumber = index + 1;
             const isSelected = currentWeekNumber === jornadaNumber;
-            const isCurrent = currentWeek?.weekNumber === jornadaNumber || currentWeek?.data?.weekNumber === jornadaNumber;
+            const isCurrent = actualWeekNumber === jornadaNumber;
 
             return (
               <button

@@ -4,27 +4,34 @@
  * se realizan operaciones de mercado, etc.
  *
  * IMPORTANTE: Usamos refetchQueries en lugar de invalidateQueries para forzar
- * la recarga inmediata de los datos, evitando que se muestren datos antiguos en caché
+ * la recarga inmediata de los datos, evitando que se muestren datos antiguos en caché.
+ * `type: 'active'` va dentro del objeto de filtros (React Query v5); solo se
+ * refrescan las queries montadas, el resto se recarga al montarse.
  */
+
+// Las dos vistas de actividad usan claves distintas: el widget del Dashboard
+// ['activity', leagueId] y la página completa ['activityInfinite', leagueId].
+const activityFilters = (leagueId) => [
+  { queryKey: ['activity', leagueId] },
+  { queryKey: ['activityInfinite', leagueId] },
+];
+
+const refetchAll = (queryClient, filters) =>
+  Promise.all(
+    filters.map((filter) => queryClient.refetchQueries({ ...filter, type: 'active' }))
+  );
 
 /**
  * Invalida todas las queries relacionadas con operaciones de mercado
  * Usar después de: pujas, ventas, compras, ofertas, etc.
  */
 export const invalidateMarketData = async (queryClient, leagueId) => {
-  const queriesToInvalidate = [
+  await refetchAll(queryClient, [
     { queryKey: ['market', leagueId] },           // Datos del mercado
     { queryKey: ['standings', leagueId] },        // Clasificación (puntos, dinero pueden cambiar)
     { queryKey: ['allPlayers'] },                 // Jugadores (propietarios cambian)
-    { queryKey: ['allActivity', leagueId] },      // Actividad de la liga
-  ];
-
-  // Invalidar Y refetch para forzar actualización inmediata
-  await Promise.all(
-    queriesToInvalidate.map(query =>
-      queryClient.refetchQueries(query, { type: 'active' })
-    )
-  );
+    ...activityFilters(leagueId),
+  ]);
 };
 
 /**
@@ -32,7 +39,7 @@ export const invalidateMarketData = async (queryClient, leagueId) => {
  * Usar después de: compras, ventas, pujas que cambian el dinero disponible
  */
 export const invalidateTeamMoney = async (queryClient, teamId) => {
-  await queryClient.refetchQueries({ queryKey: ['teamMoney', teamId] }, { type: 'active' });
+  await refetchAll(queryClient, [{ queryKey: ['teamMoney', teamId] }]);
 };
 
 /**
@@ -40,16 +47,12 @@ export const invalidateTeamMoney = async (queryClient, teamId) => {
  * Usar después de: cambios en alineación, fichajes, ventas
  */
 export const invalidateTeamData = async (queryClient, leagueId, teamId) => {
-  const queriesToInvalidate = [
+  await refetchAll(queryClient, [
     { queryKey: ['teamData', leagueId, teamId] },
     { queryKey: ['teamMoney', teamId] },
     { queryKey: ['standings', leagueId] },
-    { queryKey: ['allActivity', leagueId] },
-  ];
-
-  await Promise.all(
-    queriesToInvalidate.map(query => queryClient.refetchQueries(query, { type: 'active' }))
-  );
+    ...activityFilters(leagueId),
+  ]);
 };
 
 /**
@@ -57,7 +60,7 @@ export const invalidateTeamData = async (queryClient, leagueId, teamId) => {
  * Usar después de: activar cláusula de rescisión
  */
 export const invalidateAfterClausePurchase = async (queryClient, leagueId, buyerTeamId, sellerTeamId) => {
-  const queriesToInvalidate = [
+  await refetchAll(queryClient, [
     { queryKey: ['market', leagueId] },
     { queryKey: ['standings', leagueId] },
     { queryKey: ['allPlayers'] },                 // Propietarios cambian
@@ -65,13 +68,9 @@ export const invalidateAfterClausePurchase = async (queryClient, leagueId, buyer
     { queryKey: ['teamMoney', sellerTeamId] },
     { queryKey: ['teamData', leagueId, buyerTeamId] },
     { queryKey: ['teamData', leagueId, sellerTeamId] },
-    { queryKey: ['allActivity', leagueId] },
-    { queryKey: ['allTeamsData', leagueId] },     // Para Activity component
-  ];
-
-  await Promise.all(
-    queriesToInvalidate.map(query => queryClient.refetchQueries(query, { type: 'active' }))
-  );
+    { queryKey: ['allTeamsData', leagueId] },     // Para RecentActivity (cláusulas)
+    ...activityFilters(leagueId),
+  ]);
 };
 
 /**
@@ -79,18 +78,14 @@ export const invalidateAfterClausePurchase = async (queryClient, leagueId, buyer
  * Usar después de: acceptOffer, declineOffer
  */
 export const invalidateAfterOfferResponse = async (queryClient, leagueId, teamId) => {
-  const queriesToInvalidate = [
+  await refetchAll(queryClient, [
     { queryKey: ['market', leagueId] },
     { queryKey: ['allPlayers'] },                 // Propietarios pueden cambiar
     { queryKey: ['teamMoney', teamId] },
     { queryKey: ['standings', leagueId] },
-    { queryKey: ['allActivity', leagueId] },
     { queryKey: ['allTeamsData', leagueId] },
-  ];
-
-  await Promise.all(
-    queriesToInvalidate.map(query => queryClient.refetchQueries(query, { type: 'active' }))
-  );
+    ...activityFilters(leagueId),
+  ]);
 };
 
 /**
@@ -98,20 +93,16 @@ export const invalidateAfterOfferResponse = async (queryClient, leagueId, teamId
  * Solo afecta al mercado, no cambia propietarios
  */
 export const invalidateAfterBid = async (queryClient, leagueId) => {
-  await queryClient.refetchQueries({ queryKey: ['market', leagueId] }, { type: 'active' });
+  await refetchAll(queryClient, [{ queryKey: ['market', leagueId] }]);
 };
 
 /**
  * Invalida después de poner/retirar un jugador del mercado
  */
 export const invalidateAfterMarketListing = async (queryClient, leagueId, teamId) => {
-  const queriesToInvalidate = [
+  await refetchAll(queryClient, [
     { queryKey: ['market', leagueId] },
     { queryKey: ['teamData', leagueId, teamId] },
-    { queryKey: ['allActivity', leagueId] },
-  ];
-
-  await Promise.all(
-    queriesToInvalidate.map(query => queryClient.refetchQueries(query, { type: 'active' }))
-  );
+    ...activityFilters(leagueId),
+  ]);
 };

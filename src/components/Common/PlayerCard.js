@@ -4,7 +4,8 @@ import { BellRing } from 'lucide-react';
 import { useAlertStore } from '../../stores/alertStore';
 
 const PlayerCard = ({ player, onClick, showAlertIndicator = true }) => {
-  const { hasActiveAlerts, getPlayerAlerts } = useAlertStore();
+  const hasActiveAlerts = useAlertStore((state) => state.hasActiveAlerts);
+  const getPlayerAlerts = useAlertStore((state) => state.getPlayerAlerts);
   
   const handleClick = () => {
     if (onClick) {

@@ -1,4 +1,5 @@
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -11,21 +12,10 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const axiosPackagePath = require.resolve('axios/package.json');
 const axios = require(path.join(path.dirname(axiosPackagePath), 'dist/node/axios.cjs'));
 const { loadConfig } = require('./config');
+const { isOriginAllowed } = require('./security');
 
 // Ensure axios uses the Node http adapter even when XMLHttpRequest is present.
 axios.defaults.adapter = 'http';
-
-const isOriginAllowed = (origin, allowedOrigins) => {
-  if (!origin) return false;
-  return allowedOrigins.some((allowed) => {
-    if (allowed === '*' || allowed === origin) return true;
-    if (allowed.endsWith('*')) {
-      return origin.startsWith(allowed.slice(0, -1));
-    }
-    if (allowed === 'app://.' && origin.startsWith('app://')) return true;
-    return false;
-  });
-};
 
 const buildCorsMiddleware = (config) => {
   const allowedOrigins = config.security.allowedOrigins;
@@ -453,12 +443,6 @@ const buildLineupHandler = (config) => {
   };
 };
 
-const sharedSessionState = {
-  tokens: null,
-  user: null,
-  updatedAt: null,
-};
-
 const buildApp = (config) => {
   const app = express();
   const corsMiddleware = buildCorsMiddleware(config);
@@ -490,7 +474,38 @@ const buildApp = (config) => {
   app.use(
     helmet({
       crossOriginEmbedderPolicy: false,
-      contentSecurityPolicy: false,
+      // CSP for the served build (web + packaged Electron both load the app
+      // from this server; the CRA dev server on 3006 is unaffected so the
+      // dev error overlay keeps working). connect-src lists every external
+      // host the renderer talks to directly; everything else goes through
+      // this proxy ('self'). img-src stays broad because player/team images
+      // come from several LaLiga + futbolfantasy CDN hosts.
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          'default-src': ["'self'"],
+          'script-src': ["'self'"],
+          'style-src': ["'self'", "'unsafe-inline'"],
+          'font-src': ["'self'", 'data:'],
+          'img-src': ["'self'", 'data:', 'blob:', 'https:'],
+          'connect-src': [
+            "'self'",
+            'http://localhost:*',
+            'http://127.0.0.1:*',
+            'ws://localhost:*',
+            'ws://127.0.0.1:*',
+            'https://fantasy-api.llt-services.com',
+            'https://login.laliga.es',
+            'https://raw.githubusercontent.com',
+            'https://github.com',
+          ],
+          'object-src': ["'none'"],
+          'base-uri': ["'self'"],
+          'form-action': ["'self'"],
+          'frame-ancestors': ["'self'"],
+          'worker-src': ["'self'"],
+        },
+      },
     })
   );
   app.use(compression());
@@ -505,41 +520,6 @@ const buildApp = (config) => {
 
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
-
-  app.post('/api/internal/session/share', (req, res) => {
-    const { tokens, user } = req.body || {};
-
-    if (!tokens || typeof tokens !== 'object') {
-      res.status(400).json({ error: 'Invalid session payload' });
-      return;
-    }
-
-    sharedSessionState.tokens = tokens;
-    sharedSessionState.user = user || null;
-    sharedSessionState.updatedAt = new Date().toISOString();
-
-    res.json({ success: true, updatedAt: sharedSessionState.updatedAt });
-  });
-
-  app.get('/api/internal/session', (req, res) => {
-    if (!sharedSessionState.tokens) {
-      res.status(404).json({ error: 'No session available' });
-      return;
-    }
-
-    res.json({
-      tokens: sharedSessionState.tokens,
-      user: sharedSessionState.user,
-      updatedAt: sharedSessionState.updatedAt,
-    });
-  });
-
-  app.delete('/api/internal/session/share', (req, res) => {
-    sharedSessionState.tokens = null;
-    sharedSessionState.user = null;
-    sharedSessionState.updatedAt = new Date().toISOString();
-    res.status(204).end();
   });
 
   app.use(config.proxy.basePath, limiter);
@@ -558,7 +538,18 @@ const buildApp = (config) => {
     config.app.serveStatic === true || (config.app.serveStatic !== false && fs.existsSync(resolvedStaticDir));
 
   if (hasBuild) {
-    app.use(express.static(resolvedStaticDir, { index: false, maxAge: '1d' }));
+    // Los assets de /static/ llevan hash de contenido en el nombre: un año e
+    // immutable. El resto (favicon, manifest, sw) mantiene el día de antes.
+    app.use(express.static(resolvedStaticDir, {
+      index: false,
+      maxAge: '1d',
+      setHeaders: (res, filePath) => {
+        const normalized = filePath.split(path.sep).join('/');
+        if (normalized.includes('/static/')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
+    }));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith(config.proxy.basePath) || req.path.startsWith(config.proxy.statsBasePath)) {
         next();
@@ -567,6 +558,8 @@ const buildApp = (config) => {
 
       const indexPath = path.join(resolvedStaticDir, 'index.html');
       if (fs.existsSync(indexPath)) {
+        // index.html es el puntero a los assets con hash: no cachear.
+        res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(indexPath);
       } else {
         next();
@@ -586,6 +579,38 @@ const buildApp = (config) => {
   return app;
 };
 
+const WILDCARD_HOSTS = new Set(['::', '0.0.0.0', '::ffff:0.0.0.0']);
+
+// Duplicado a propósito de electron/network-utils.js: server/ no depende del
+// árbol electron/ para que el backend Docker funcione por sí solo.
+const collectLanIPv4Addresses = () => {
+  const addresses = new Set();
+  Object.values(os.networkInterfaces()).forEach((entries) => {
+    entries?.forEach((entry) => {
+      if (!entry || entry.internal) return;
+      const family = typeof entry.family === 'string' ? entry.family : String(entry.family);
+      if (family !== 'IPv4' && family !== '4') return;
+      addresses.add(entry.address);
+    });
+  });
+  return Array.from(addresses);
+};
+
+// Con bind no-loopback, permite los orígenes de las IPs propias para que la
+// app abierta desde otro dispositivo (http://<ip-lan>:puerto) pase el CORS.
+const withLanAllowedOrigins = (config) => {
+  const host = String(config.app.host || '').toLowerCase();
+  if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
+    return config;
+  }
+  const lanHosts = WILDCARD_HOSTS.has(host) ? collectLanIPv4Addresses() : [config.app.host];
+  const lanOrigins = lanHosts.map((ip) => `http://${ip}:*`);
+  config.security.allowedOrigins = Array.from(
+    new Set([...config.security.allowedOrigins, ...lanOrigins])
+  );
+  return config;
+};
+
 const normalizeLoopbackHost = (value) => {
   if (!value) {
     return '127.0.0.1';
@@ -601,7 +626,7 @@ const normalizeLoopbackHost = (value) => {
 };
 
 const startServer = async (overrides = {}) => {
-  const config = loadConfig(overrides);
+  const config = withLanAllowedOrigins(loadConfig(overrides));
   const app = buildApp(config);
   const server = http.createServer(app);
 
@@ -641,8 +666,13 @@ const startServer = async (overrides = {}) => {
 
 if (require.main === module) {
   startServer()
-    .then(({ url }) => {
+    .then(({ url, host, port }) => {
       console.log(`Unified server listening at ${url}`);
+      if (WILDCARD_HOSTS.has(String(host).toLowerCase())) {
+        collectLanIPv4Addresses().forEach((ip) => {
+          console.log(`  Acceso en red local: http://${ip}:${port}`);
+        });
+      }
     })
     .catch((error) => {
       console.error('Failed to start unified server:', error);

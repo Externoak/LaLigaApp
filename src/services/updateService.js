@@ -7,7 +7,10 @@ class UpdateService {
     constructor() {
         this.currentVersion = process.env.REACT_APP_VERSION || packageJson.version;
         this.updateCheckUrl = process.env.REACT_APP_UPDATE_CHECK_URL || 'https://raw.githubusercontent.com/Externoak/LaLigaApp/master/version.json';
-        this.releaseUrl = 'https://github.com/Externoak/LaLigaApp/releases/latest';
+        // GitHub releases base — overridable via REACT_APP_GITHUB_RELEASES_URL.
+        const releasesBase = process.env.REACT_APP_GITHUB_RELEASES_URL || 'https://github.com/Externoak/LaLigaApp/releases/latest';
+        this.releaseUrl = releasesBase;
+        this.downloadUrl = `${releasesBase.replace(/\/$/, '')}/download/LaLigaApp.zip`;
 
         this.isElectron = !!(
             window.electronAPI ||
@@ -22,7 +25,7 @@ class UpdateService {
      * Get GitHub release download URL
      */
     getGitHubDownloadUrl() {
-        return 'https://github.com/Externoak/LaLigaApp/releases/latest/download/LaLigaApp.zip';
+        return this.downloadUrl;
     }
 
     /**
@@ -64,6 +67,9 @@ class UpdateService {
                 latestVersion,
                 releaseNotes: versionData.notes || '',
                 downloadUrl: this.getGitHubDownloadUrl(),
+                // Optional artifact hash published in version.json; the Electron
+                // main process verifies the download against it when present.
+                sha256: versionData.sha256 || null,
                 publishedAt: versionData.publishedAt || new Date().toISOString()
             };
 
@@ -141,6 +147,7 @@ class UpdateService {
                 return await window.electronAPI.downloadAndInstallUpdate({
                     downloadUrl: downloadUrl,
                     version: updateInfo.latestVersion,
+                    sha256: updateInfo.sha256 || null,
                     hints: {
                         // main process should store backups under app.getPath('userData')/backups
                         backupOutsideApp: true,
@@ -211,6 +218,7 @@ class UpdateService {
                 await window.electronAPI.downloadAndInstallUpdate({
                     downloadUrl: downloadUrl,
                     version: updateInfo.latestVersion,
+                    sha256: updateInfo.sha256 || null,
                     hints: {
                         backupOutsideApp: true,
                         backupFolderName: 'backups'

@@ -3,6 +3,7 @@
  */
 
 import { fantasyAPI } from './api';
+import { extractArray } from '../utils/helpers';
 
 class TeamService {
   constructor() {
@@ -14,9 +15,36 @@ class TeamService {
   }
 
   /**
-   * Initialize team service with league and user data
+   * Initialize team service with league and user data.
+   * Idempotente: una init reciente para la misma liga+usuario se reutiliza y
+   * los llamadores concurrentes comparten la promesa en vuelo, así los flujos
+   * imperativos (OfertasTab, flows de puja) no re-recorren el ranking.
    */
   async initialize(leagueId, user) {
+    const userId = user?.userId || user?.id || user?.sub || user?.oid;
+    const initKey = `${leagueId}:${userId}`;
+
+    if (
+      this.userTeamId &&
+      this._initKey === initKey &&
+      this.lastUpdate &&
+      Date.now() - this.lastUpdate < 5 * 60 * 1000
+    ) {
+      return { success: true, teamId: this.userTeamId, fromCache: true };
+    }
+
+    if (this._initPromise && this._initKey === initKey) {
+      return this._initPromise;
+    }
+
+    this._initKey = initKey;
+    this._initPromise = this._doInitialize(leagueId, user).finally(() => {
+      this._initPromise = null;
+    });
+    return this._initPromise;
+  }
+
+  async _doInitialize(leagueId, user) {
     try {
       if (!leagueId) {
         throw new Error('League ID is required');
@@ -34,13 +62,7 @@ class TeamService {
 
       // Find user's team ID from league ranking
       const rankingResponse = await fantasyAPI.getLeagueRanking(leagueId);
-      let teams = [];
-
-      if (Array.isArray(rankingResponse)) {
-        teams = rankingResponse;
-      } else if (rankingResponse?.data && Array.isArray(rankingResponse.data)) {
-        teams = rankingResponse.data;
-      }
+      const teams = extractArray(rankingResponse);
 
       // If userId is a UUID (JWT sub), try to get the actual user ID from API
       let actualUserId = userId;
@@ -129,7 +151,12 @@ class TeamService {
           if (item.bid && item.bid.id && item.bid.money && item.bid.status === 'pending') {
             // This is a bid made by the current user (since it appears in their market data)
             // Only add if we don't already have this bid (avoid duplicating recent bids)
-            if (!this.userOffers.has(item.playerMaster.id)) {
+            // and it wasn't just canceled: el mercado refetcheado puede llegar
+            // de la caché HTTP (max-age=300 del proxy) o del API antes de
+            // reflejar la cancelación, y re-añadirla haría reaparecer el
+            // botón Modificar/Cancelar.
+            if (!this.userOffers.has(item.playerMaster.id) &&
+                !this.recentlyCanceled.has(item.playerMaster.id)) {
               this.addOffer(
                 item.playerMaster.id,
                 item.bid.money,
@@ -169,7 +196,9 @@ class TeamService {
         return offer.bidderTeam?.id === this.userTeamId;
       });
 
-      if (userBid && !this.userOffers.has(item.playerMaster.id)) {
+      if (userBid &&
+          !this.userOffers.has(item.playerMaster.id) &&
+          !this.recentlyCanceled.has(item.playerMaster.id)) {
         this.addOffer(
           item.playerMaster.id,
           userBid.money,
@@ -296,9 +325,12 @@ class TeamService {
   }
 
   /**
-   * Add/update a user offer
+   * Add/update a user offer. Una puja nueva anula cualquier marca de
+   * cancelación reciente (si no, la guarda de recentlyCanceled la
+   * suprimiría en el siguiente loadExistingBids).
    */
   addOffer(playerId, amount, playerName, bidId = null) {
+    this.recentlyCanceled.delete(playerId);
     this.userOffers.set(playerId, {
       amount,
       playerName,

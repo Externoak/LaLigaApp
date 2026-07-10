@@ -8,7 +8,7 @@
 
 > A comprehensive fantasy football management platform for La Liga Fantasy with extra market information and probable lineups from https://www.futbolfantasy.com/
 
-[![Version](https://img.shields.io/badge/version-3.4.0-green.svg)](https://github.com/Externoak/LaLigaApp)
+[![Version](https://img.shields.io/badge/version-3.5.0-green.svg)](https://github.com/Externoak/LaLigaApp)
 [![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 [![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#platforms)
@@ -28,7 +28,7 @@ The official La Liga Fantasy only has a mobile application, leaving PC users wit
 
 Main menu image:
 
-<img src="public/LaLigaAppMainPage.png">
+<img src="docs/LaLigaAppMainPage.png">
 
 ## 📥 How to use the application
 
@@ -44,7 +44,7 @@ That's it! No additional installation required.
 
 **🛡️ Your data is completely secure:**
 
-- **No own servers / local session data**: Preferences and session are saved locally (encrypted when applicable)
+- **No own servers / local session data**: Preferences and session are saved locally on your device; they never leave it
 - **No telemetry**: We don't send any personal data to external servers
 - **No tracking**: The application doesn't track your activity or usage
 - **No analytics**: We don't collect usage statistics or personal information
@@ -81,7 +81,7 @@ The project does not encourage or allow circumventing technical measures, prohib
 
 ### Prerequisites
 
-- **Node.js** 16.0.0 or higher
+- **Node.js** 18.0.0 or higher (CI and Docker use Node 20)
 - **npm** 7.0.0 or higher
 - **Git** for cloning the repository
 
@@ -189,7 +189,7 @@ LaLigaApp/
 The application uses a unified server that serves both the React application and the CORS proxy:
 
 - **Unified Server**: `http://localhost:3005`
-- **API Target**: `https://api-fantasy.llt-services.com`
+- **API Target**: `https://fantasy-api.llt-services.com`
 
 ### Authentication
 

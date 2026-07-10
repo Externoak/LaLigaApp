@@ -61,8 +61,7 @@
 
     <script>
         console.log('🚀 La Liga OAuth Callback Handler loaded');
-        console.log('📍 Current URL:', window.location.href);
-        
+
         const container = document.getElementById('container');
         const spinner = document.getElementById('spinner');
         const title = document.getElementById('title');
@@ -89,13 +88,9 @@
             console.log('🔍 Starting OAuth callback processing...');
             updateStatus('Analizando respuesta OAuth...');
             
-            const url = window.location.href;
             const urlParams = new URLSearchParams(window.location.search);
             const hashParams = new URLSearchParams(window.location.hash.substring(1));
-            
-            console.log('🔗 Search params:', window.location.search);
-            console.log('🔗 Hash params:', window.location.hash);
-            
+
             const tokenData = {};
             
             // Extract tokens from hash (fragment mode)
@@ -103,7 +98,6 @@
                 const value = hashParams.get(param) || urlParams.get(param);
                 if (value) {
                     tokenData[param] = value;
-                    console.log(`✅ Found ${param}:`, value.substring(0, 30) + '...');
                 }
             });
             
@@ -116,11 +110,11 @@
                 updateStatus(`Error: ${error} - ${errorDescription}`, true);
                 
                 if (window.opener) {
-                    window.opener.postMessage({ 
-                        type: 'OAUTH_ERROR', 
-                        error: error, 
-                        error_description: errorDescription 
-                    }, '*');
+                    window.opener.postMessage({
+                        type: 'OAUTH_ERROR',
+                        error: error,
+                        error_description: errorDescription
+                    }, window.location.origin);
                 }
                 
                 setTimeout(() => {
@@ -136,13 +130,7 @@
             // Check if we have valid tokens
             if (tokenData.access_token || tokenData.id_token) {
                 console.log('🎉 SUCCESS: Valid tokens captured!');
-                console.log('📋 Token data:', {
-                    access_token: tokenData.access_token ? 'Present (' + tokenData.access_token.length + ' chars)' : 'Missing',
-                    id_token: tokenData.id_token ? 'Present (' + tokenData.id_token.length + ' chars)' : 'Missing',
-                    refresh_token: tokenData.refresh_token ? 'Present' : 'Missing',
-                    expires_in: tokenData.expires_in || 'Not specified'
-                });
-                
+
                 updateStatus('¡Tokens capturados exitosamente!', false, true);
                 message.textContent = '🎉 Login exitoso - Cerrando ventana...';
                 
@@ -153,7 +141,7 @@
                         window.opener.postMessage({
                             type: 'LALIGA_TOKENS_CAPTURED',
                             tokens: tokenData
-                        }, '*');
+                        }, window.location.origin);
                         
                         setTimeout(() => {
                             console.log('🚪 Closing callback window...');

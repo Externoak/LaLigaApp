@@ -1,19 +1,13 @@
 import React, { useEffect } from 'react';
-import { HashRouter  as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter  as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
+import { ThemeProvider } from './contexts/ThemeContext';
 import Layout from './components/Layout/Layout';
 import LoadingSpinner from './components/Common/LoadingSpinner';
-import Lineup from './components/Teams/Lineup';
-import LineupEditor from './components/Teams/LineupEditor';
-import TeamPlayers from './components/Teams/TeamPlayers';
-import LaLigaTeams from './components/Teams/LaLigaTeams';
-import MarketTrends from './components/Market/MarketTrends';
-import AlertManager from './components/Alerts/AlertManager';
+import RouteErrorBoundary from './components/Common/RouteErrorBoundary';
 import Login from './components/Auth/Login';
 import LeagueSelector from './components/Auth/LeagueSelector';
 import OAuthCallback from './components/Auth/OAuthCallback';
-import Settings from './components/Settings/Settings';
-import OncesProbles from './components/OncesProbles/OncesProbles';
 // Route-based code splitting for major features
 const Dashboard = React.lazy(() => import(/* webpackChunkName: "dashboard" */ './components/Dashboard/Dashboard'));
 const Standings = React.lazy(() => import(/* webpackChunkName: "standings" */ './components/Standings/Standings'));
@@ -23,9 +17,17 @@ const Matches = React.lazy(() => import(/* webpackChunkName: "matches" */ './com
 const Players = React.lazy(() => import(/* webpackChunkName: "players" */ './components/Players/Players'));
 const Clauses = React.lazy(() => import(/* webpackChunkName: "clauses" */ './components/Clauses/Clauses'));
 const Activity = React.lazy(() => import(/* webpackChunkName: "activity" */ './components/Activity/Activity'));
+const Lineup = React.lazy(() => import(/* webpackChunkName: "lineup" */ './components/Teams/Lineup'));
+const LineupEditor = React.lazy(() => import(/* webpackChunkName: "lineup-editor" */ './components/Teams/LineupEditor'));
+const TeamPlayers = React.lazy(() => import(/* webpackChunkName: "team-players" */ './components/Teams/TeamPlayers'));
+const LaLigaTeams = React.lazy(() => import(/* webpackChunkName: "laliga-teams" */ './components/Teams/LaLigaTeams'));
+const MarketTrends = React.lazy(() => import(/* webpackChunkName: "market-trends" */ './components/Market/MarketTrends'));
+const AlertManager = React.lazy(() => import(/* webpackChunkName: "alerts" */ './components/Alerts/AlertManager'));
+const Settings = React.lazy(() => import(/* webpackChunkName: "settings" */ './components/Settings/Settings'));
+const OncesProbles = React.lazy(() => import(/* webpackChunkName: "onces" */ './components/OncesProbles/OncesProbles'));
 
 function App() {
-  const { initializeAuth } = useAuthStore();
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
 
   useEffect(() => {
     // Initialize auth from localStorage if available
@@ -33,23 +35,27 @@ function App() {
   }, [initializeAuth]);
 
   return (
-    <Router>
-      <Routes>
-        {/* OAuth callback routes - always accessible */}
-        <Route path="/oauth/callback" element={<OAuthCallback />} />
-        <Route path="/callback" element={<OAuthCallback />} />
-        <Route path="/auth/callback" element={<OAuthCallback />} />
+    <ThemeProvider>
+      <Router>
+        <Routes>
+          {/* OAuth callback routes - always accessible */}
+          <Route path="/oauth/callback" element={<OAuthCallback />} />
+          <Route path="/callback" element={<OAuthCallback />} />
+          <Route path="/auth/callback" element={<OAuthCallback />} />
 
-        {/* Main application */}
-        <Route path="/*" element={<AppRoutes />} />
-      </Routes>
-    </Router>
+          {/* Main application */}
+          <Route path="/*" element={<AppRoutes />} />
+        </Routes>
+      </Router>
+    </ThemeProvider>
   );
 }
 
 // Separate component for authenticated routes
 function AppRoutes() {
-  const { isAuthenticated, hasSelectedLeague } = useAuthStore();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const hasSelectedLeague = useAuthStore((state) => state.hasSelectedLeague);
+  const location = useLocation();
 
   // Si no está autenticado, mostrar login
   if (!isAuthenticated) {
@@ -63,6 +69,7 @@ function AppRoutes() {
 
   return (
     <Layout>
+      <RouteErrorBoundary resetKey={location.pathname}>
       <React.Suspense fallback={
         <div className="min-h-[calc(100vh-64px)] flex justify-center pt-8" style={{
           // Electron-specific positioning fix
@@ -101,6 +108,7 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       </React.Suspense>
+      </RouteErrorBoundary>
     </Layout>
   );
 }

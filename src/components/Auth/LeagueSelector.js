@@ -9,7 +9,8 @@ const LeagueSelector = () => {
   const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [corsError, setCorsError] = useState(false);
-  const { setLeague, logout } = useAuthStore();
+  const setLeague = useAuthStore((state) => state.setLeague);
+  const logout = useAuthStore((state) => state.logout);
 
   const fetchLeagues = async () => {
     setLoading(true);
@@ -41,8 +42,12 @@ const LeagueSelector = () => {
         toast.error(`❌ Error ${error.response?.status || 'desconocido'}: ${error.response?.data?.message || error.message}`);
       }
       setLeagues([]);
+    } finally {
+      // Siempre limpiar el loading: el caso "sin ligas" hacía `return` dentro
+      // del try, saltándose este setLoading(false) y dejando el spinner
+      // "Cargando tus ligas..." colgado en vez de mostrar el estado vacío.
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

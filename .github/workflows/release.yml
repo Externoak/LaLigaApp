@@ -133,12 +133,33 @@ jobs:
       if: steps.compare.outputs.SHOULD_BUILD == 'true'
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
 
     - name: Install dependencies
       if: steps.compare.outputs.SHOULD_BUILD == 'true'
-      run: npm ci
+      run: npm ci --prefer-offline --no-audit --no-fund
+
+    # Evita re-descargar el binario de Electron (~100MB) y las herramientas de
+    # electron-builder en cada release.
+    - name: Cache Electron binaries
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~\AppData\Local\electron\Cache
+          ~\AppData\Local\electron-builder\Cache
+        key: electron-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          electron-cache-${{ runner.os }}-
+
+    - name: Lint
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      run: npx eslint src
+
+    - name: Test
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      run: npm test -- --watchAll=false
 
     - name: Update version.json with correct version and timestamp
       if: steps.compare.outputs.SHOULD_BUILD == 'true'
@@ -228,6 +249,21 @@ jobs:
           echo "Dist directory not found: $distPath"
           exit 1
         }
+
+    - name: Publish artifact SHA-256 in version.json
+      if: steps.compare.outputs.SHOULD_BUILD == 'true'
+      shell: powershell
+      run: |
+        $hash = (Get-FileHash LaLigaApp.zip -Algorithm SHA256).Hash.ToLower()
+        $versionJson = Get-Content "version.json" -Encoding UTF8 | ConvertFrom-Json
+        if ($versionJson.PSObject.Properties['sha256']) {
+          $versionJson.sha256 = $hash
+        } else {
+          $versionJson | Add-Member -NotePropertyName sha256 -NotePropertyValue $hash
+        }
+        $jsonContent = $versionJson | ConvertTo-Json -Depth 10
+        [System.IO.File]::WriteAllText("version.json", $jsonContent, [System.Text.Encoding]::UTF8)
+        echo "Artifact SHA256: $hash"
 
     - name: Create Release
       if: steps.compare.outputs.SHOULD_BUILD == 'true'

@@ -2,11 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import authService from '../services/authService';
 import tokenPersistenceService from '../services/tokenPersistence';
-import SecureTokenManager from '../utils/SecureTokenManager';
-
-// In-flight refresh memoization: concurrent callers share the same promise
-// to prevent N parallel 401s from firing N refresh requests.
-let inflightRefresh = null;
+import tokenStorage from '../services/tokenStorage';
 
 export const useAuthStore = create(
   persist(
@@ -22,6 +18,14 @@ export const useAuthStore = create(
       // Token refresh interval ID
       refreshIntervalId: null,
 
+      // In-flight refresh memoization: concurrent callers share the same promise
+      // to prevent N parallel 401s from firing N refresh requests. Stored in
+      // Zustand state (rather than a module-global) so it lives alongside the
+      // tokens it mutates. The AbortController is kept beside the promise so a
+      // logout/clear can cancel an in-flight refresh.
+      inflightRefresh: null,
+      inflightRefreshAbort: null,
+
       // Initialize auth from localStorage and persistent storage
       initializeAuth: async () => {
 
@@ -32,47 +36,35 @@ export const useAuthStore = create(
         await get().tryRecoverFromPersistentStorage();
 
         // Clear any old invalid tokens that might be causing issues
-        const savedTokens = localStorage.getItem('laliga_tokens');
-        const savedUser = localStorage.getItem('laliga_user');
+        const { tokens: savedTokens, user: savedUser } = tokenStorage.load();
 
         // Check if we have old test tokens or invalid tokens
         if (savedTokens) {
-          try {
-            const parsedTokens = JSON.parse(savedTokens);
-            if (parsedTokens.access_token?.startsWith('test_') ||
-                parsedTokens.id_token?.startsWith('test_') ||
-                parsedTokens.refresh_token?.startsWith('test_')) {
-              localStorage.removeItem('laliga_tokens');
-              localStorage.removeItem('laliga_user');
-              return; // Exit early, don't try to initialize with test tokens
-            }
-          } catch (e) {
-            localStorage.removeItem('laliga_tokens');
-            localStorage.removeItem('laliga_user');
-            return;
+          if (savedTokens.access_token?.startsWith('test_') ||
+              savedTokens.id_token?.startsWith('test_') ||
+              savedTokens.refresh_token?.startsWith('test_')) {
+            await tokenStorage.clear();
+            return; // Exit early, don't try to initialize with test tokens
           }
         }
 
         if (savedTokens && savedUser) {
           try {
-            const parsedTokens = JSON.parse(savedTokens);
-            const parsedUser = JSON.parse(savedUser);
-
             // Set initial state
             set({
               isAuthenticated: true,
-              user: parsedUser,
-              tokens: parsedTokens
+              user: savedUser,
+              tokens: savedTokens
             });
 
             // Check if token is expired
-            const expiresAt = parsedTokens.expires_on || (Date.now() / 1000 + parsedTokens.expires_in);
+            const expiresAt = savedTokens.expires_on || (Date.now() / 1000 + savedTokens.expires_in);
             const now = Date.now();
             const fiveMinutes = 5 * 60 * 1000;
 
             if ((expiresAt * 1000 - now) < fiveMinutes) {
               // Token expired or about to expire, try to refresh
-              if (parsedTokens.refresh_token) {
+              if (savedTokens.refresh_token) {
                 try {
                   await get().refreshToken();
                   // Start periodic refresh after successful refresh
@@ -81,8 +73,7 @@ export const useAuthStore = create(
                   // Only logout if it's not an invalid_grant error
                   if (!error.message?.includes('invalid_grant')) {
                     // For other errors, clear everything
-                    localStorage.removeItem('laliga_tokens');
-                    localStorage.removeItem('laliga_user');
+                    await tokenStorage.clear();
                     set({
                       isAuthenticated: false,
                       user: null,
@@ -95,8 +86,7 @@ export const useAuthStore = create(
                 }
               } else {
                 // No refresh token, clear expired tokens
-                localStorage.removeItem('laliga_tokens');
-                localStorage.removeItem('laliga_user');
+                await tokenStorage.clear();
                 set({
                   isAuthenticated: false,
                   user: null,
@@ -105,14 +95,13 @@ export const useAuthStore = create(
               }
             } else {
               // Token is still valid, start periodic refresh if we have refresh token
-              if (parsedTokens.refresh_token) {
+              if (savedTokens.refresh_token) {
                 get().startPeriodicRefresh();
               }
             }
           } catch (error) {
             // Clear corrupted data
-            localStorage.removeItem('laliga_tokens');
-            localStorage.removeItem('laliga_user');
+            await tokenStorage.clear();
             set({
               isAuthenticated: false,
               user: null,
@@ -121,14 +110,9 @@ export const useAuthStore = create(
           }
         } else {
           // Attempt to load encrypted token if present (fallback)
-          const encrypted = localStorage.getItem('auth_token_encrypted');
-          if (encrypted) {
-            try {
-              const access = await SecureTokenManager.decryptToken(JSON.parse(encrypted));
-              if (access) {
-                set({ isAuthenticated: true, tokens: { access_token: access, token_type: 'Bearer' } });
-              }
-            } catch {}
+          const access = await tokenStorage.loadEncryptedAccessToken();
+          if (access) {
+            set({ isAuthenticated: true, tokens: { access_token: access, token_type: 'Bearer' } });
           }
         }
       },
@@ -140,26 +124,22 @@ export const useAuthStore = create(
           // Check if persistent storage is available
           const isAvailable = await tokenPersistenceService.isAvailable();
           if (!isAvailable) {
-                        return false;
+            return false;
           }
 
           // Check if we already have valid tokens in localStorage
-          const currentTokens = localStorage.getItem('laliga_tokens');
+          const { tokens: currentTokens } = tokenStorage.load();
           if (currentTokens) {
-            try {
-              const parsedTokens = JSON.parse(currentTokens);
-              const isCurrentExpired = authService.isTokenExpired(parsedTokens);
-              if (!isCurrentExpired) {
-                                return false; // No need to recover
-              }
-            } catch (e) {
-                          }
+            const isCurrentExpired = authService.isTokenExpired(currentTokens);
+            if (!isCurrentExpired) {
+              return false; // No need to recover
+            }
           }
 
           // Try to load from persistent storage
-          const persistentData = await tokenPersistenceService.loadTokens();
+          const persistentData = await tokenStorage.loadPersistent();
           if (!persistentData) {
-                        return false;
+            return false;
           }
 
           const { tokens, user } = persistentData;
@@ -185,22 +165,17 @@ export const useAuthStore = create(
                   set({ user: user });
                 }
 
-                                return true;
+                return true;
               } catch (refreshError) {
                 return false;
               }
             } else {
-                            return false;
+              return false;
             }
           }
 
           // Persistent tokens are still valid, restore them
-
-          // Restore to localStorage
-          localStorage.setItem('laliga_tokens', JSON.stringify(tokens));
-          if (user) {
-            localStorage.setItem('laliga_user', JSON.stringify(user));
-          }
+          await tokenStorage.save(tokens, user);
 
           // Update state
           set({
@@ -214,7 +189,7 @@ export const useAuthStore = create(
             get().startPeriodicRefresh();
           }
 
-                    return true;
+          return true;
 
         } catch (error) {
           return false;
@@ -224,95 +199,24 @@ export const useAuthStore = create(
       // Login with token or token data
       login: async (tokenOrData) => {
         try {
-          let tokens;
-          let user = null;
+          const { tokens, user: jwtUser } = authService.buildLoginPayload(tokenOrData);
 
-          // If it's a string, assume it's just the access_token
-          if (typeof tokenOrData === 'string') {
-            tokens = {
-              access_token: tokenOrData,
-              token_type: 'Bearer',
-              expires_in: 86400,
-              expires_on: authService.calculateTokenExpiration({ expires_in: 86400 })
-            };
-
-            // Try to decode basic user info from JWT token
-            user = authService.extractUserFromTokens(tokens);
-          } else {
-            // It's a complete token object from OAuth2 response
-            tokens = {
-              access_token: tokenOrData.access_token,
-              id_token: tokenOrData.id_token,
-              refresh_token: tokenOrData.refresh_token,
-              token_type: tokenOrData.token_type || 'Bearer',
-              expires_in: tokenOrData.expires_in || 86400,
-              expires_on: authService.calculateTokenExpiration(tokenOrData)
-            };
-
-            // Extract user info using auth service
-            user = authService.extractUserFromTokens(tokens);
-          }
-
-          // Store tokens in localStorage
-          localStorage.setItem('laliga_tokens', JSON.stringify(tokens));
-          // Store encrypted access token (for added at-rest protection)
-          try {
-            if (tokens.access_token) {
-              const encrypted = await SecureTokenManager.encryptToken(tokens.access_token);
-              if (encrypted) {
-                localStorage.setItem('auth_token_encrypted', JSON.stringify(encrypted));
-              }
-            }
-          } catch {}
-
-          // Also save to persistent storage for app reinstalls
-          try {
-            await tokenPersistenceService.saveTokens(tokens, user);
-          } catch (persistError) {
-          }
+          // Persist tokens (localStorage + encryption + Electron persistent IPC)
+          await tokenStorage.save(tokens, jwtUser);
 
           // Update state with tokens first
           set({
             isAuthenticated: true,
-            user: user,
+            user: jwtUser,
             tokens: tokens
           });
 
           // Now fetch complete user data from API
           try {
-            const { fantasyAPI } = await import('../services/api');
-            const userResponse = await fantasyAPI.getCurrentUser();
-
-            if (userResponse?.data) {
-              const apiUser = userResponse.data;
-
-              const completeUser = {
-                ...user,
-                // API user data (prioritized)
-                userId: apiUser.id || apiUser.userId || apiUser.managerId,
-                id: apiUser.id || apiUser.userId || apiUser.managerId,
-                username: apiUser.username || apiUser.managerName || apiUser.name || apiUser.displayName,
-                displayName: apiUser.displayName || apiUser.managerName || apiUser.username || apiUser.name || user.name,
-                managerName: apiUser.managerName || apiUser.displayName || apiUser.username || apiUser.name,
-                firstName: apiUser.firstName,
-                lastName: apiUser.lastName,
-                avatar: apiUser.avatar || apiUser.profileImage,
-                profile: apiUser.profile,
-                // Keep JWT data as backup
-                email: user.email || apiUser.email,
-                name: apiUser.managerName || apiUser.displayName || apiUser.username || apiUser.name || user.name,
-                given_name: user.given_name || apiUser.firstName
-              };
-
-              // Update localStorage and state with complete user data
-              localStorage.setItem('laliga_user', JSON.stringify(completeUser));
+            const completeUser = await authService.fetchCurrentUserProfile(jwtUser);
+            if (completeUser) {
+              await tokenStorage.save(get().tokens, completeUser);
               set({ user: completeUser });
-
-              // Update persistent storage with complete user data
-              try {
-                await tokenPersistenceService.saveTokens(get().tokens, completeUser);
-              } catch (persistError) {
-              }
             }
           } catch (apiError) {
             // Check if the error is due to invalid refresh token
@@ -320,14 +224,10 @@ export const useAuthStore = create(
               // Clear the invalid refresh token but keep the access token for this session
               const tokensWithoutRefresh = { ...tokens };
               delete tokensWithoutRefresh.refresh_token;
-              localStorage.setItem('laliga_tokens', JSON.stringify(tokensWithoutRefresh));
+              await tokenStorage.save(tokensWithoutRefresh, jwtUser);
               set({ tokens: tokensWithoutRefresh });
             }
-
-            // Continue with JWT user data only
-            // The Layout component will automatically trigger a background refresh
-            // when it detects the user is not fully fetched
-            localStorage.setItem('laliga_user', JSON.stringify(user));
+            // Continue with JWT user data only — Layout will trigger a background refresh
           }
 
           // Start periodic token refresh if we have a refresh token
@@ -344,34 +244,10 @@ export const useAuthStore = create(
       // Fetch current user data
       fetchUserData: async () => {
         try {
-          const { fantasyAPI } = await import('../services/api');
-          const userResponse = await fantasyAPI.getCurrentUser();
-
-          if (userResponse?.data) {
-            const apiUser = userResponse.data;
-            const currentUser = get().user;
-
-            const updatedUser = {
-              ...currentUser,
-              // API user data (prioritized)
-              userId: apiUser.id || apiUser.userId || apiUser.managerId,
-              id: apiUser.id || apiUser.userId || apiUser.managerId,
-              username: apiUser.username || apiUser.managerName || apiUser.name || apiUser.displayName,
-              displayName: apiUser.displayName || apiUser.managerName || apiUser.username || apiUser.name || currentUser?.name,
-              managerName: apiUser.managerName || apiUser.displayName || apiUser.username || apiUser.name,
-              firstName: apiUser.firstName,
-              lastName: apiUser.lastName,
-              avatar: apiUser.avatar || apiUser.profileImage,
-              profile: apiUser.profile,
-              // Keep existing data as backup
-              email: currentUser?.email || apiUser.email,
-              name: apiUser.managerName || apiUser.displayName || apiUser.username || apiUser.name || currentUser?.name
-            };
-
-            // Update localStorage and state
-            localStorage.setItem('laliga_user', JSON.stringify(updatedUser));
+          const updatedUser = await authService.fetchCurrentUserProfile(get().user);
+          if (updatedUser) {
+            await tokenStorage.save(get().tokens, updatedUser);
             set({ user: updatedUser });
-
             return updatedUser;
           }
         } catch (error) {
@@ -394,13 +270,16 @@ export const useAuthStore = create(
 
       // Refresh access token using refresh token
       refreshToken: async () => {
-        if (inflightRefresh) return inflightRefresh;
-        inflightRefresh = (async () => {
+        // Concurrent calls share the same in-flight promise.
+        const existing = get().inflightRefresh;
+        if (existing) return existing;
+
+        const abortController = new AbortController();
+
+        const promise = (async () => {
           try {
             const state = get();
             const refreshTokenValue = state.tokens?.refresh_token;
-
-            // Token refresh process starting
 
             if (!refreshTokenValue) {
               throw new Error('No refresh token available');
@@ -411,61 +290,50 @@ export const useAuthStore = create(
               return state.tokens.access_token;
             }
 
+            if (abortController.signal.aborted) {
+              throw new Error('Refresh aborted');
+            }
+
             try {
               const result = await authService.refreshToken(refreshTokenValue);
+
+              if (abortController.signal.aborted) {
+                throw new Error('Refresh aborted');
+              }
 
               // Update tokens with new data (prioritize id_token like the bot)
               const newTokens = {
                 ...state.tokens,
-                // Use id_token as primary token (like bot_original.js does)
                 access_token: result.id_token || result.access_token,
                 id_token: result.id_token,
-                // Keep new refresh token if provided, otherwise keep the existing one
                 refresh_token: result.refresh_token || state.tokens.refresh_token,
                 expires_in: result.id_token_expires_in || result.expires_in || 86400,
                 expires_on: authService.calculateTokenExpiration({
                   id_token_expires_in: result.id_token_expires_in,
                   expires_in: result.expires_in
                 }),
-                // Store additional fields from LaLiga response
                 id_token_expires_in: result.id_token_expires_in,
                 refresh_token_expires_in: result.refresh_token_expires_in
               };
 
-              // Update localStorage and state
-              localStorage.setItem('laliga_tokens', JSON.stringify(newTokens));
-              try {
-                if (newTokens.access_token) {
-                  const encrypted = await SecureTokenManager.encryptToken(newTokens.access_token);
-                  if (encrypted) {
-                    localStorage.setItem('auth_token_encrypted', JSON.stringify(encrypted));
-                  }
-                }
-              } catch {}
+              await tokenStorage.save(newTokens, get().user);
 
               set({
                 tokens: newTokens,
-                isAuthenticated: true  // Ensure isAuthenticated stays true after refresh
+                isAuthenticated: true
               });
-
-              // Update persistent storage with refreshed tokens
-              try {
-                await tokenPersistenceService.saveTokens(newTokens, get().user);
-              } catch (persistError) {
-              }
 
               return newTokens.access_token;
             } catch (error) {
-
               // Check if the error is due to invalid_grant (expired/invalid refresh token)
               if (error.message && error.message.includes('invalid_grant')) {
                 // Remove the invalid refresh token but don't logout immediately
                 const tokensWithoutRefresh = { ...state.tokens };
                 delete tokensWithoutRefresh.refresh_token;
-                localStorage.setItem('laliga_tokens', JSON.stringify(tokensWithoutRefresh));
+                await tokenStorage.save(tokensWithoutRefresh, get().user);
                 set({
                   tokens: tokensWithoutRefresh,
-                  isAuthenticated: true  // Keep user authenticated even without refresh token
+                  isAuthenticated: true
                 });
 
                 throw new Error('Refresh token is expired or invalid. Please login again when your session expires.');
@@ -476,10 +344,12 @@ export const useAuthStore = create(
               throw error;
             }
           } finally {
-            inflightRefresh = null;
+            set({ inflightRefresh: null, inflightRefreshAbort: null });
           }
         })();
-        return inflightRefresh;
+
+        set({ inflightRefresh: promise, inflightRefreshAbort: abortController });
+        return promise;
       },
 
       // Check if token is expired or about to expire
@@ -529,17 +399,14 @@ export const useAuthStore = create(
 
       // Logout function
       logout: async () => {
-        // Stop periodic refresh
+        // Stop periodic refresh and cancel any in-flight refresh
         get().stopPeriodicRefresh();
-        localStorage.removeItem('auth_token_encrypted');
-        localStorage.removeItem('laliga_tokens');
-        localStorage.removeItem('laliga_user');
-
-        // Clear persistent storage as well
-        try {
-          await tokenPersistenceService.clearTokens();
-        } catch (persistError) {
+        const abort = get().inflightRefreshAbort;
+        if (abort) {
+          try { abort.abort(); } catch (err) { console.warn('[authStore:logoutAbort]', err); }
         }
+
+        await tokenStorage.clear();
 
         set({
           isAuthenticated: false,
@@ -548,7 +415,9 @@ export const useAuthStore = create(
           leagueId: null,
           leagueName: null,
           hasSelectedLeague: false,
-          refreshIntervalId: null
+          refreshIntervalId: null,
+          inflightRefresh: null,
+          inflightRefreshAbort: null,
         });
       },
 
@@ -603,6 +472,10 @@ export const useAuthStore = create(
 
         // Also listen for window messages (from token extractor)
         window.addEventListener('message', (event) => {
+          // Only accept token messages from our own origin (interceptor + oauth callback run same-origin)
+          if (event.origin !== window.location.origin) {
+            return;
+          }
           if (event.data?.type === 'LALIGA_TOKENS_CAPTURED') {
             get().handleCapturedTokens(event.data.tokens);
           }
@@ -658,18 +531,14 @@ export const useAuthStore = create(
 
       // Clear all stored tokens and reset auth state
       clearAllTokens: async () => {
-        // Stop periodic refresh
+        // Stop periodic refresh and cancel any in-flight refresh
         get().stopPeriodicRefresh();
-        localStorage.removeItem('auth_token_encrypted');
-        // Clear localStorage
-        localStorage.removeItem('laliga_tokens');
-        localStorage.removeItem('laliga_user');
-
-        // Clear persistent storage as well
-        try {
-          await tokenPersistenceService.clearTokens();
-        } catch (persistError) {
+        const abort = get().inflightRefreshAbort;
+        if (abort) {
+          try { abort.abort(); } catch (err) { console.warn('[authStore:clearAbort]', err); }
         }
+
+        await tokenStorage.clear();
 
         // Reset state
         set({
@@ -679,7 +548,9 @@ export const useAuthStore = create(
           leagueId: null,
           leagueName: null,
           hasSelectedLeague: false,
-          refreshIntervalId: null
+          refreshIntervalId: null,
+          inflightRefresh: null,
+          inflightRefreshAbort: null,
         });
 
       },
@@ -688,7 +559,7 @@ export const useAuthStore = create(
       getPersistentStorageInfo: async () => {
         try {
           const info = await tokenPersistenceService.getStorageInfo();
-                    return info;
+          return info;
         } catch (error) {
           return { available: false, error: error.message };
         }

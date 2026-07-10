@@ -29,6 +29,23 @@ export const formatNumber = (num) => {
     return new Intl.NumberFormat('es-ES').format(num);
 };
 
+// Formato compacto de moneda: 1.2M€ / 500K€ / 950€
+export const formatCurrencyCompact = (value) => {
+    const num = Number(value);
+    if (!num || isNaN(num)) return '0€';
+    if (Math.abs(num) >= 1000000) return `${(num / 1000000).toFixed(1)}M€`;
+    if (Math.abs(num) >= 1000) return `${(num / 1000).toFixed(0)}K€`;
+    return `${num}€`;
+};
+
+// Formatear número con punto como separador de miles (acepta number o string con dígitos)
+export const formatNumberWithDots = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const digits = value.toString().replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+};
+
 // Calcular tiempo transcurrido
 export const timeAgo = (date) => {
     if (!date) return '';
@@ -69,15 +86,27 @@ export const getPositionEmoji = (positionId) => {
     return emojis[positionId] || '👤';
 };
 
+// Obtener nombre de posición. El fallback se muestra de verdad (positionId 5
+// = entrenador no está en el mapa), así que cada vista puede pasar el suyo.
+export const getPositionName = (positionId, fallback = 'N/A') => {
+    const names = {
+        1: 'Portero',
+        2: 'Defensa',
+        3: 'Centrocampista',
+        4: 'Delantero'
+    };
+    return names[positionId] || fallback;
+};
+
 // Obtener color de posición
-export const getPositionColor = (positionId) => {
+export const getPositionColor = (positionId, fallback = 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400') => {
     const colors = {
         1: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
         2: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
         3: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
         4: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
     };
-    return colors[positionId] || 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
+    return colors[positionId] || fallback;
 };
 
 // Formatear fecha
@@ -131,39 +160,79 @@ export const getPlayerStatus = (status) => {
     return statuses[status] || statuses.available;
 };
 
-// Validar token JWT
-export const isTokenValid = (token) => {
-    if (!token) return false;
-
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) return false;
-
-        const payload = JSON.parse(atob(parts[1]));
-        const exp = payload.exp * 1000;
-
-        return Date.now() < exp;
-    } catch (error) {
-        return false;
-    }
-};
-
-// Extraer información del token
-export const getTokenInfo = (token) => {
+// Decodificar el payload de un JWT (sin verificar la firma)
+export const parseJwtPayload = (token) => {
     if (!token) return null;
 
     try {
         const parts = token.split('.');
         if (parts.length !== 3) return null;
-
-        const payload = JSON.parse(atob(parts[1]));
-
-        return {
-            email: payload.email,
-            exp: new Date(payload.exp * 1000),
-            iat: new Date(payload.iat * 1000)
-        };
+        return JSON.parse(atob(parts[1]));
     } catch (error) {
         return null;
     }
+};
+
+// Validar token JWT
+export const isTokenValid = (token) => {
+    const payload = parseJwtPayload(token);
+    if (!payload) return false;
+    return Date.now() < payload.exp * 1000;
+};
+
+// Extraer información del token
+export const getTokenInfo = (token) => {
+    const payload = parseJwtPayload(token);
+    if (!payload) return null;
+
+    return {
+        email: payload.email,
+        exp: new Date(payload.exp * 1000),
+        iat: new Date(payload.iat * 1000)
+    };
+};
+
+// Extrae el array de datos de una respuesta de la API, que puede venir como
+// array directo, envuelto en .data/.elements, o bajo cualquier otra propiedad.
+export const extractArray = (response) => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.elements)) return response.elements;
+    if (response && typeof response === 'object') {
+        const arrayProperty = Object.values(response).find((val) => Array.isArray(val));
+        if (arrayProperty) return arrayProperty;
+    }
+    return [];
+};
+
+// Reemplaza el contenido del contenedor de un <img> roto por un badge de
+// iniciales, construyendo nodos DOM (textContent) en lugar de innerHTML para
+// que los nombres (datos scrapeados/de API) nunca se interpreten como marcado.
+export const setImageFallback = (parentNode, options = {}) => {
+    const {
+        tag = 'div',
+        className = '',
+        style = '',
+        text = '',
+        textClassName = '',
+        textStyle = '',
+    } = options;
+
+    if (!parentNode) return;
+
+    const fallback = document.createElement(tag);
+    if (className) fallback.className = className;
+    if (style) fallback.style.cssText = style;
+
+    if (textClassName || textStyle) {
+        const span = document.createElement('span');
+        if (textClassName) span.className = textClassName;
+        if (textStyle) span.style.cssText = textStyle;
+        span.textContent = text;
+        fallback.appendChild(span);
+    } else {
+        fallback.textContent = text;
+    }
+
+    parentNode.replaceChildren(fallback);
 };

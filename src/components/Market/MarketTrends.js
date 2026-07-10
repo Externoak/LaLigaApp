@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, RefreshCw, Filter, ShoppingCart, BarChart3, Search } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import { formatCurrency } from '../../utils/helpers';
+import { formatCurrency, getPositionName, extractArray } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
@@ -23,7 +23,7 @@ const MarketTrends = () => {
   const [marketStats, setMarketStats] = useState(null);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { leagueId } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
 
   const handlePlayerClick = (player) => {
     setSelectedPlayer(player);
@@ -70,16 +70,6 @@ const MarketTrends = () => {
     return positionMap[positionName?.toLowerCase()] || 1;
   }, []);
 
-  const getPositionName = useCallback((positionId) => {
-    const positionNames = {
-      1: 'Portero',
-      2: 'Defensa',
-      3: 'Centrocampista',
-      4: 'Delantero'
-    };
-    return positionNames[positionId] || 'Desconocido';
-  }, []);
-
   const initializeAndFetchTrends = useCallback(async () => {
     if (!marketData || marketLoading || !playersData || playersLoading) return;
 
@@ -103,108 +93,67 @@ const MarketTrends = () => {
       });
 
       // Extract players from the API response
-      let playersArray = [];
-      if (playersData) {
-        if (Array.isArray(playersData)) {
-          playersArray = playersData;
-        } else if (playersData?.data && Array.isArray(playersData.data)) {
-          playersArray = playersData.data;
-        } else if (playersData?.elements && Array.isArray(playersData.elements)) {
-          playersArray = playersData.elements;
-        }
-      }
+      const playersArray = extractArray(playersData);
 
-
-      // Convert trend data to display format with enhanced player matching
+      // Convert trend data to display format. Cascada de emparejamiento de
+      // más a menos precisa; findPlayerByNameAndPosition memoiza el índice
+      // normalizado por referencia del array, así que las 5 estrategias
+      // reutilizan el mismo índice.
       const trendsDisplayData = allTrendingPlayers.map((trend, index) => {
-        // Try multiple matching strategies for better success rate
         let matchedPlayer = null;
 
-        // Only log first 5 players for debugging
-        const showDetailedLog = index < 5;
-
-        if (showDetailedLog) {
-          // Debug logging disabled
-        }
-
-        // Strategy 1: Try with mapped special name + team (same as OncesProblables!)
+        // Strategy 1: mapped special name + team + position
         if (trend.originalName) {
-          const mappedName = mapSpecialNameForTrends(trend.originalName);
           matchedPlayer = findPlayerByNameAndPosition(
-            mappedName,
+            mapSpecialNameForTrends(trend.originalName),
             trend.posicion,
             playersArray,
-            trend.equipo // Add team for more precise matching!
+            trend.equipo
           );
-          if (matchedPlayer && showDetailedLog) {
-            // Debug logging disabled
-          }
         }
 
-        // Strategy 2: If no match, try with mapped normalized name + team
+        // Strategy 2: mapped normalized name + team + position
         if (!matchedPlayer) {
-          const mappedName = mapSpecialNameForTrends(trend.nombre);
           matchedPlayer = findPlayerByNameAndPosition(
-            mappedName,
+            mapSpecialNameForTrends(trend.nombre),
             trend.posicion,
             playersArray,
-            trend.equipo // Add team for more precise matching!
+            trend.equipo
           );
-          if (matchedPlayer && showDetailedLog) {
-            // Debug logging disabled
-          }
         }
 
-        // Strategy 3: If still no match, try without position filter but keep team
+        // Strategy 3: no position filter, keep team
         if (!matchedPlayer && trend.originalName) {
-          const mappedName = mapSpecialNameForTrends(trend.originalName);
           matchedPlayer = findPlayerByNameAndPosition(
-            mappedName,
-            null, // No position filter
+            mapSpecialNameForTrends(trend.originalName),
+            null,
             playersArray,
-            trend.equipo // Keep team for better matching
+            trend.equipo
           );
-          if (matchedPlayer && showDetailedLog) {
-            // Debug logging disabled
-          }
         }
 
-        // Strategy 4: Last resort - try mapped normalized name without position but with team
+        // Strategy 4: normalized name, no position, keep team
         if (!matchedPlayer) {
-          const mappedName = mapSpecialNameForTrends(trend.nombre);
           matchedPlayer = findPlayerByNameAndPosition(
-            mappedName,
-            null, // No position filter
+            mapSpecialNameForTrends(trend.nombre),
+            null,
             playersArray,
-            trend.equipo // Keep team for better matching
+            trend.equipo
           );
-          if (matchedPlayer && showDetailedLog) {
-            // Debug logging disabled
-          }
         }
 
-        // Strategy 5: Ultimate fallback - try without team constraint
+        // Strategy 5: position but no team constraint
         if (!matchedPlayer && trend.originalName) {
-          const mappedName = mapSpecialNameForTrends(trend.originalName);
           matchedPlayer = findPlayerByNameAndPosition(
-            mappedName,
+            mapSpecialNameForTrends(trend.originalName),
             trend.posicion,
             playersArray
-            // No team parameter - allow any team
           );
-          if (matchedPlayer && showDetailedLog) {
-            // Debug logging disabled
-          }
-        }
-
-        // ALWAYS log failures for debugging - these are the important ones
-        if (!matchedPlayer) {
-          // Debug logging disabled
         }
 
         return {
-          // Use trend data as primary source
-          id: `trend-${index}`,
+          // Clave estable por contenido (no por índice: los filtros reordenan)
+          id: `trend-${trend.originalName || trend.nombre}-${trend.equipo || ''}-${index}`,
           name: matchedPlayer ? (matchedPlayer.nickname || matchedPlayer.name) : (trend.originalName || trend.nombre),
           nickname: matchedPlayer ? (matchedPlayer.nickname || matchedPlayer.name) : (trend.originalName || trend.nombre),
           positionId: matchedPlayer ? parseInt(matchedPlayer.positionId) : getPositionId(trend.posicion),
@@ -232,21 +181,6 @@ const MarketTrends = () => {
         };
       });
 
-      // Log matching summary
-      const totalPlayers = trendsDisplayData.length;
-      const matchedPlayers = trendsDisplayData.filter(p => p.matchedPlayer).length;
-      const unmatchedPlayers = totalPlayers - matchedPlayers;
-
-
-      if (unmatchedPlayers > 0) {
-        trendsDisplayData
-          .filter(p => !p.matchedPlayer)
-          .slice(0, 10) // Show first 10 unmatched
-          .forEach(_p => {
-            // Debug logging disabled
-          });
-      }
-
       setTrendsData(trendsDisplayData);
 
       // Get market statistics
@@ -258,7 +192,7 @@ const MarketTrends = () => {
     } finally {
       setLoading(false);
     }
-  }, [marketData, marketLoading, playersData, playersLoading, getPositionId, getPositionName]);
+  }, [marketData, marketLoading, playersData, playersLoading, getPositionId]);
 
   useEffect(() => {
     initializeAndFetchTrends();

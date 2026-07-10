@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Bell, Plus } from 'lucide-react';
 import { useAlertStore } from '../../stores/alertStore';
 import { useAuthStore } from '../../stores/authStore';
-import DiscordWebhookSetup from './DiscordWebhookSetup';
 import toast from 'react-hot-toast';
 
 const QuickAlertButton = ({ 
@@ -13,9 +12,10 @@ const QuickAlertButton = ({
   variant = 'default'
 }) => {
   const [isCreating, setIsCreating] = useState(false);
-  const [showSetup, setShowSetup] = useState(false);
-  const { createAlert, hasActiveAlerts } = useAlertStore();
-  const { user, leagueId } = useAuthStore();
+  const createAlert = useAlertStore((state) => state.createAlert);
+  const hasActiveAlerts = useAlertStore((state) => state.hasActiveAlerts);
+  const user = useAuthStore((state) => state.user);
+  const leagueId = useAuthStore((state) => state.leagueId);
   
   const handleQuickAlert = async (e) => {
     e.stopPropagation(); // Prevent triggering parent onClick events
@@ -37,16 +37,8 @@ const QuickAlertButton = ({
     }
 
     setIsCreating(true);
-    
-    try {
-      // Get Discord webhook from localStorage or show setup modal
-      const savedWebhook = localStorage.getItem('discord_webhook_default');
-      if (!savedWebhook) {
-        setIsCreating(false);
-        toast.error('Función temporalmente deshabilitada');
-        return;
-      }
 
+    try {
       const alertData = {
         type: alertType,
         playerId: player.id,
@@ -56,13 +48,11 @@ const QuickAlertButton = ({
         targetDate: '',
         targetValue: player.marketValue || '',
         message: `Alerta rápida creada para ${alertType === 'clause_available' ? 'cláusula' : 'mercado'}`,
-        enabled: true,
-        notificationMethods: ['discord'],
-        discordWebhook: savedWebhook
+        enabled: true
       };
 
       createAlert(alertData, user.userId, leagueId);
-      
+
     } catch (error) {
       toast.error('Error al crear la alerta');
     } finally {
@@ -104,16 +94,13 @@ const QuickAlertButton = ({
     price_change: 'Alerta de Precio'
   };
 
-  const handleWebhookSaved = () => {
-    // Automatically create the alert after webhook is saved
-    handleQuickAlert({ stopPropagation: () => {} });
-  };
-
   if (hasAlerts) {
     return (
       <button
+        type="button"
         className={`${buttonClasses[variant]} ${className}`}
         title="Ya tienes alertas para este jugador"
+        aria-label="Ya tienes alertas para este jugador"
         disabled
       >
         <Bell className={sizeClasses[size]} />
@@ -123,17 +110,13 @@ const QuickAlertButton = ({
 
   return (
     <>
-      <DiscordWebhookSetup
-        isOpen={showSetup}
-        onClose={() => setShowSetup(false)}
-        onWebhookSaved={handleWebhookSaved}
-      />
-      
       <button
+        type="button"
         onClick={handleQuickAlert}
         disabled={isCreating}
         className={`${buttonClasses[variant]} ${className} ${isCreating ? 'opacity-50 cursor-not-allowed' : ''}`}
         title={`Crear ${alertTypeLabels[alertType]}`}
+        aria-label={`Crear ${alertTypeLabels[alertType]}`}
       >
         {isCreating ? (
           <div className={`${sizeClasses[size]} animate-spin border-2 border-current border-t-transparent rounded-full`} />

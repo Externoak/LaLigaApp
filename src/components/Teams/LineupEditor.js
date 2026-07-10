@@ -11,7 +11,8 @@ import LoadingSpinner from '../Common/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 const LineupEditor = () => {
-  const { leagueId, user } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
 
   // State

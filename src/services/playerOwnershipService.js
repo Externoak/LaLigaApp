@@ -1,4 +1,7 @@
 import { fantasyAPI } from './api';
+import { fetchAllTeamsData, extractTeamPlayers } from '../utils/fetchAllTeamsData';
+import { queryClient } from '../utils/queryClient';
+import { extractArray } from '../utils/helpers';
 
 class PlayerOwnershipService {
   constructor() {
@@ -21,6 +24,18 @@ class PlayerOwnershipService {
             return { success: true, fromCache: true, playersFound: this.ownershipData.size };
     }
 
+    // Concurrent callers for the same league share the in-flight promise.
+    if (this._initPromise && this._initLeagueId === leagueId) {
+      return this._initPromise;
+    }
+    this._initLeagueId = leagueId;
+    this._initPromise = this._doInitialize(leagueId).finally(() => {
+      this._initPromise = null;
+    });
+    return this._initPromise;
+  }
+
+  async _doInitialize(leagueId) {
     try {
             this.currentLeagueId = leagueId;
       
@@ -32,19 +47,27 @@ class PlayerOwnershipService {
       // Step 2: Get market data for immediate ownership info
       await this.loadMarketOwnership(leagueId);
       
-      // Step 3: Only fetch team details for teams we don't have cached
-      const teamsToFetch = teams.filter(team => {
-        const teamId = team.id || team.team?.id;
-        const cached = this.teamPlayersCache.get(teamId);
-        return !cached || (Date.now() - cached.lastFetch > this.cacheValidityTime);
+      // Steps 3-4: plantillas vía la caché compartida ['teamData'] con
+      // concurrencia limitada — mismo camino que Cláusulas/Clasificación,
+      // así que navegar entre vistas no repite el walk. La frescura la
+      // gestiona React Query (staleTime), no una caché privada.
+      const teamsData = await fetchAllTeamsData(queryClient, leagueId, teams, {
+        staleTime: this.cacheValidityTime,
       });
-
-            
-      // Step 4: Fetch missing team data efficiently
-      if (teamsToFetch.length > 0) {
-        await this.fetchTeamPlayersOptimized(leagueId, teamsToFetch);
+      for (const [teamId, { teamData, entry: team }] of teamsData) {
+        const players = extractTeamPlayers(teamData);
+        this.teamPlayersCache.set(teamId, {
+          players: players.map(p => ({
+            id: p.playerMaster?.id || p.id,
+            name: p.playerMaster?.name || p.name,
+            nickname: p.playerMaster?.nickname || p.nickname
+          })),
+          managerName: team.managerName,
+          managerId: team.managerId,
+          lastFetch: Date.now()
+        });
       }
-      
+
       // Step 5: Build ownership map from cached data
       this.buildOwnershipMap(teams);
 
@@ -87,15 +110,7 @@ class PlayerOwnershipService {
   async loadMarketOwnership(leagueId) {
     try {
             const marketResponse = await fantasyAPI.getMarket(leagueId);
-      
-      let marketArray = [];
-      if (Array.isArray(marketResponse)) {
-        marketArray = marketResponse;
-      } else if (marketResponse?.data && Array.isArray(marketResponse.data)) {
-        marketArray = marketResponse.data;
-      } else if (marketResponse?.elements && Array.isArray(marketResponse.elements)) {
-        marketArray = marketResponse.elements;
-      }
+      const marketArray = extractArray(marketResponse);
 
       marketArray.forEach(item => {
         if (item.playerMaster?.id && item.ownerName) {
@@ -110,55 +125,6 @@ class PlayerOwnershipService {
       });
 
           } catch (error) {
-    }
-  }
-
-  // Fetch team players with batching and optimization
-  async fetchTeamPlayersOptimized(leagueId, teams) {
-        
-    // Process in small batches to avoid overwhelming the API
-    const batchSize = 3;
-    for (let i = 0; i < teams.length; i += batchSize) {
-      const batch = teams.slice(i, i + batchSize);
-      const promises = batch.map(team => this.fetchSingleTeamPlayers(leagueId, team));
-      
-      await Promise.allSettled(promises);
-      
-      // Small delay between batches
-      if (i + batchSize < teams.length) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-  }
-
-  // Fetch players for a single team
-  async fetchSingleTeamPlayers(leagueId, team) {
-    try {
-      const teamData = await fantasyAPI.getTeamData(leagueId, team.id);
-      
-      let players = [];
-      if (teamData?.players && Array.isArray(teamData.players)) {
-        players = teamData.players;
-      } else if (teamData?.data?.players && Array.isArray(teamData.data.players)) {
-        players = teamData.data.players;
-      }
-
-      // Cache the result
-      this.teamPlayersCache.set(team.id, {
-        players: players.map(p => ({
-          id: p.playerMaster?.id || p.id,
-          name: p.playerMaster?.name || p.name,
-          nickname: p.playerMaster?.nickname || p.nickname
-        })),
-        managerName: team.managerName,
-        managerId: team.managerId,
-        lastFetch: Date.now()
-      });
-
-      return { success: true, playerCount: players.length };
-
-    } catch (error) {
-      return { success: false, error: error.message };
     }
   }
 

@@ -1,23 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
-import { Users, Search, User, Trophy, ChevronRight, Target } from 'lucide-react';
+import { Users, Search, User, Trophy, ChevronRight, Target, RefreshCw } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import { formatCurrency, formatNumber } from '../../utils/helpers';
+import { formatCurrency, formatNumber, setImageFallback, extractArray } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
-import marketTrendsService from '../../services/marketTrendsService';
-import { mapSpecialNameForTrends } from '../../utils/playerNameMatcher';
+import useMarketTrends from '../../hooks/useMarketTrends';
+import useTeamMarketIncreases from '../../hooks/useTeamMarketIncreases';
 
 const Teams = () => {
-  const { leagueId, user } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
-  const [trendsInitialized, setTrendsInitialized] = useState(false);
-  const [teamMarketIncreases, setTeamMarketIncreases] = useState(new Map());
 
   // Handle URL search parameters
   useEffect(() => {
@@ -37,104 +36,11 @@ const Teams = () => {
     gcTime: 5 * 60 * 1000, // 5 minutos en memoria
   });
 
-  // Initialize market trends service
-  useEffect(() => {
-    const initializeMarketTrends = async () => {
-      if (trendsInitialized || !leagueId) return;
+  // Market trends via el hook compartido (una query key para toda la app)
+  const { trendsReady: trendsInitialized } = useMarketTrends();
 
-      try {
-                await marketTrendsService.initialize();
-        setTrendsInitialized(true);
-              } catch (error) {
-      }
-    };
-
-    initializeMarketTrends();
-  }, [leagueId, trendsInitialized]);
-
-  // Calculate team market value increases
-  useEffect(() => {
-    const calculateTeamMarketIncreases = async () => {
-      if (!trendsInitialized || !standings || !leagueId) return;
-
-            const increases = new Map();
-
-      try {
-        // Get standings data
-        let standingsData = [];
-        if (Array.isArray(standings)) {
-          standingsData = standings;
-        } else if (standings?.data && Array.isArray(standings.data)) {
-          standingsData = standings.data;
-        } else if (standings?.elements && Array.isArray(standings.elements)) {
-          standingsData = standings.elements;
-        }
-
-        // For each team, get their players and calculate total increase
-        for (const team of standingsData) {
-          const teamId = team.id || team.team?.id;
-          if (!teamId) continue;
-
-          try {
-            // Get team data including players - use React Query cache
-            const teamData = await queryClient.fetchQuery({
-              queryKey: ['teamData', leagueId, teamId],
-              queryFn: () => fantasyAPI.getTeamData(leagueId, teamId),
-              staleTime: 15 * 60 * 1000, // 15 minutos
-              gcTime: 30 * 60 * 1000, // 30 minutos
-            });
-            let players = [];
-
-            if (teamData?.players && Array.isArray(teamData.players)) {
-              players = teamData.players;
-            } else if (teamData?.data?.players && Array.isArray(teamData.data.players)) {
-              players = teamData.data.players;
-            }
-
-            let totalIncrease = 0;
-
-            // Calculate increase for each player
-            for (const playerTeam of players) {
-              const player = playerTeam.playerMaster;
-              if (!player) continue;
-
-              // Get trend data for this player
-              const baseName = mapSpecialNameForTrends(player.nickname || player.name);
-              let trendData = marketTrendsService.getPlayerMarketTrend(
-                baseName,
-                player.positionId,
-                player.team?.name
-              );
-
-              // Fallback without team
-              if (!trendData) {
-                trendData = marketTrendsService.getPlayerMarketTrend(
-                  baseName,
-                  player.positionId
-                );
-              }
-
-              // Add the market value change (can be positive or negative)
-              if (trendData && typeof trendData.diferencia1 === 'number') {
-                totalIncrease += trendData.diferencia1;
-              }
-            }
-
-            increases.set(teamId, totalIncrease);
-
-          } catch (error) {
-            increases.set(teamId, 0);
-          }
-        }
-
-        setTeamMarketIncreases(increases);
-
-      } catch (error) {
-      }
-    };
-
-    calculateTeamMarketIncreases();
-  }, [trendsInitialized, standings, leagueId, queryClient]);
+  // Team market value increases via the shared hook
+  const teamMarketIncreases = useTeamMarketIncreases(standings, leagueId, trendsInitialized);
 
   if (isLoading) return <LoadingSpinner fullScreen={true} />;
 
@@ -148,19 +54,7 @@ const Teams = () => {
   }
 
   // Handle different API response structures
-  let teamsData = [];
-  if (Array.isArray(standings)) {
-    teamsData = standings;
-  } else if (standings?.data && Array.isArray(standings.data)) {
-    teamsData = standings.data;
-  } else if (standings?.elements && Array.isArray(standings.elements)) {
-    teamsData = standings.elements;
-  } else if (standings && typeof standings === 'object') {
-    const arrayProperty = Object.values(standings).find(val => Array.isArray(val));
-    if (arrayProperty) {
-      teamsData = arrayProperty;
-    }
-  }
+  const teamsData = extractArray(standings);
 
   // Filter teams by search term
   const filteredTeams = teamsData.filter(item => {
@@ -234,7 +128,11 @@ const Teams = () => {
                   className="w-10 h-10 rounded-full object-cover"
                   onError={(e) => {
                     e.target.style.display = 'none';
-                    e.target.parentNode.innerHTML = `<span class="text-white text-lg font-bold">${(user?.name || user?.username || 'U').charAt(0)}</span>`;
+                    setImageFallback(e.target.parentNode, {
+                      tag: 'span',
+                      className: 'text-white text-lg font-bold',
+                      text: (user?.name || user?.username || 'U').charAt(0),
+                    });
                   }}
                 />
               ) : (
@@ -257,8 +155,9 @@ const Teams = () => {
             await queryClient.invalidateQueries({ queryKey: ['teamData'] });
             refetch();
           }}
-          className="btn-primary"
+          className="btn-primary flex items-center gap-2"
         >
+          <RefreshCw className="w-4 h-4" aria-hidden="true" />
           Actualizar
         </button>
       </div>

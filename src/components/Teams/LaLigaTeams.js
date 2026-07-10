@@ -7,22 +7,21 @@ import {
 } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
-import { formatCurrency, formatNumber } from '../../utils/helpers';
+import { formatCurrency, formatNumber, getPositionName } from '../../utils/helpers';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorDisplay from '../Common/ErrorDisplay';
 import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
 import playerOwnershipService from '../../services/playerOwnershipService';
-import { mapSpecialNameForTrends } from '../../utils/playerNameMatcher';
+import useMarketTrends from '../../hooks/useMarketTrends';
+import { getClauseTimeRemaining, isClauseExpiringSoon } from '../../utils/clauseUtils';
 
 const LaLigaTeams = () => {
-  const { leagueId } = useAuthStore();
+  const leagueId = useAuthStore((state) => state.leagueId);
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTeamIndex, setSelectedTeamIndex] = useState(0);
   const [positionFilter, setPositionFilter] = useState('all');
-  const [trendsInitialized, setTrendsInitialized] = useState(false);
-  const [ownershipInitialized, setOwnershipInitialized] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -41,39 +40,25 @@ const LaLigaTeams = () => {
     queryKey: ['allPlayers'],
     queryFn: () => fantasyAPI.getAllPlayers(),
     retry: 1,
-    staleTime: 30 * 60 * 1000, // 30 minutos - reutiliza caché de Players
+    // 5 min + refetchOnMount: auto-sana una lista de equipos de la temporada
+    // anterior (host antiguo) al navegar, sin recargar la página.
+    staleTime: 5 * 60 * 1000,
+    refetchOnMount: true,
     gcTime: 60 * 60 * 1000, // 1 hora
   });
 
   // Extract teams from players data
   const [teams, setTeams] = useState([]);
 
-  // Initialize services for player trends and ownership data
-  useEffect(() => {
-    const initializeServices = async () => {
-      if (!leagueId || (trendsInitialized && ownershipInitialized)) return;
-
-      try {
-        const [trendsResult, ownershipResult] = await Promise.allSettled([
-          !trendsInitialized ? marketTrendsService.initialize() : Promise.resolve({ fromCache: true }),
-          !ownershipInitialized ? playerOwnershipService.initialize(leagueId) : Promise.resolve({ fromCache: true })
-        ]);
-
-        if (trendsResult.status === 'fulfilled' && !trendsInitialized) {
-          setTrendsInitialized(true);
-        }
-
-        if (ownershipResult.status === 'fulfilled' && !ownershipInitialized) {
-          setOwnershipInitialized(true);
-        }
-
-      } catch (error) {
-        // Service initialization error
-      }
-    };
-
-    initializeServices();
-  }, [leagueId, trendsInitialized, ownershipInitialized]);
+  // Service initialization via shared hooks/queries (single key per service)
+  const { trendsReady: trendsInitialized } = useMarketTrends();
+  const { isSuccess: ownershipInitialized } = useQuery({
+    queryKey: ['playerOwnershipInit', leagueId],
+    queryFn: () => playerOwnershipService.initialize(leagueId),
+    enabled: !!leagueId,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+  });
 
   useEffect(() => {
     if (playersData) {
@@ -148,16 +133,8 @@ const LaLigaTeams = () => {
     }
   }, [searchParams, teams]);
 
-  const getPositionName = (positionId) => {
-    const positions = {
-      1: 'Portero',
-      2: 'Defensa',
-      3: 'Centrocampista',
-      4: 'Delantero'
-    };
-    return positions[positionId] || 'Desconocido';
-  };
-
+  // getPositionColor local a propósito: esta vista usa una paleta distinta
+  // (primary/emerald) a la del helper compartido.
   const getPositionColor = (positionId) => {
     const colors = {
       1: 'bg-primary-100 text-primary-800 dark:bg-primary-900/30 dark:text-primary-400',
@@ -166,39 +143,6 @@ const LaLigaTeams = () => {
       4: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
     };
     return colors[positionId] || 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400';
-  };
-
-  const getClauseTimeRemaining = (clauseEndTime) => {
-    if (!clauseEndTime) return null;
-
-    const now = new Date();
-    const endTime = new Date(clauseEndTime);
-    const diffMs = endTime - now;
-
-    if (diffMs <= 0) return 'Disponible';
-
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-    if (diffDays > 0) {
-      return `${diffDays}d ${diffHours}h`;
-    } else if (diffHours > 0) {
-      return `${diffHours}h ${diffMinutes}m`;
-    } else {
-      return `${diffMinutes}m`;
-    }
-  };
-
-  const isClauseExpiringSoon = (clauseEndTime) => {
-    if (!clauseEndTime) return false;
-
-    const now = new Date();
-    const endTime = new Date(clauseEndTime);
-    const diffMs = endTime - now;
-    const diffHours = diffMs / (1000 * 60 * 60);
-
-    return diffHours <= 24 && diffHours > 0;
   };
 
   // Filter teams
@@ -230,16 +174,8 @@ const LaLigaTeams = () => {
     return currentTeam.players.map(player => {
       let trendData = null;
       try {
-        if (trendsInitialized && marketTrendsService && marketTrendsService.marketValuesCache) {
-          const baseName = mapSpecialNameForTrends(player.nickname || player.name);
-          trendData = marketTrendsService.getPlayerMarketTrend(
-            baseName,
-            player.positionId,
-            player.team?.name
-          ) || marketTrendsService.getPlayerMarketTrend(
-            baseName,
-            player.positionId
-          );
+        if (trendsInitialized) {
+          trendData = marketTrendsService.resolveTrendForPlayer(player);
         }
       } catch (error) {
         trendData = null;
@@ -293,7 +229,7 @@ const LaLigaTeams = () => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="hover-scale overflow-hidden cursor-pointer transition-all duration-200 rounded-lg border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-900 to-gray-800"
+        className="hover-scale overflow-hidden cursor-pointer transition-all duration-200 rounded-lg border border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800"
         onClick={() => handlePlayerClick(player)}
       >
         {/* Player Image */}

@@ -1,30 +1,25 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// Inter autoalojada (sin petición a Google Fonts): 400/500/600/700 en uso
+// directo y 800 porque font-black (900) resuelve al peso cargado más alto.
+// Solo subsets latin/latin-ext: cubren el español y evitan empaquetar
+// cirílico/griego/vietnamita en el zip de Electron.
+import '@fontsource/inter/latin-400.css';
+import '@fontsource/inter/latin-ext-400.css';
+import '@fontsource/inter/latin-500.css';
+import '@fontsource/inter/latin-ext-500.css';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-ext-600.css';
+import '@fontsource/inter/latin-700.css';
+import '@fontsource/inter/latin-ext-700.css';
+import '@fontsource/inter/latin-800.css';
+import '@fontsource/inter/latin-ext-800.css';
 import './styles/globals.css';
 import App from './App';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { createQueryPersistence } from './utils/queryPersistence';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      refetchOnMount: false, // NO refetch automáticamente al montar componentes - usar caché
-      refetchOnReconnect: false, // NO refetch al reconectar - usar caché
-      retry: (failureCount, error) => {
-        // NO reintentar en errores 429 (Too Many Requests)
-        if (error?.response?.status === 429) return false;
-        // Solo 1 reintento para otros errores, y solo si es el primer fallo
-        return failureCount < 1;
-      },
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000), // Exponential backoff
-      staleTime: 30 * 1000, // 30 segundos - default conservador, componentes definen su propio staleTime
-      gcTime: 5 * 60 * 1000, // 5 minutos - mantener datos en caché (renamed from cacheTime in v5)
-      // Configuraciones específicas por query se definen en cada componente
-    },
-  },
-});
+import { queryClient } from './utils/queryClient';
 
 // Initialize query persistence
 createQueryPersistence(queryClient);
