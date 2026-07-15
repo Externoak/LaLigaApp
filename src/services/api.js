@@ -129,8 +129,17 @@ class ApiClient {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), merged.timeout);
     try {
-      const init = { method: merged.method, headers: merged.headers, signal: controller.signal };
-      if (merged.data !== undefined || merged.body !== undefined) init.body = merged.body ?? JSON.stringify(merged.data);
+      const init = { method: merged.method, headers: { ...merged.headers }, signal: controller.signal };
+      if (merged.data !== undefined || merged.body !== undefined) {
+        init.body = merged.body ?? JSON.stringify(merged.data);
+      } else {
+        // Sin body NO declaramos Content-Type: la API responde 400 a un POST que
+        // anuncia application/json con el cuerpo vacío. La app oficial envía
+        // /offer/{id}/reject sin body ni content-type y recibe 204.
+        for (const k of Object.keys(init.headers)) {
+          if (k.toLowerCase() === 'content-type') delete init.headers[k];
+        }
+      }
       const res = await fetch(finalURL, init);
       clearTimeout(id);
       const contentType = res.headers.get('content-type') || '';
@@ -402,8 +411,10 @@ export const fantasyAPI = {
     money: newBidAmount
   }),
 
-  // Aceptar ofertas
-  acceptOffer: (leagueId, marketId, offerId) => api.post(`${CMP}/league/${leagueId}/market/${marketId}/offer/${offerId}/accept?x-lang=es`),
+  // Aceptar ofertas. La API EXIGE el importe en el body ({"offerMoney":N}) como
+  // confirmación de la cantidad que se acepta; sin body responde 400.
+  acceptOffer: (leagueId, marketId, offerId, offerMoney) =>
+    api.post(`${CMP}/league/${leagueId}/market/${marketId}/offer/${offerId}/accept?x-lang=es`, { offerMoney }),
 
   // Rechazar ofertas
   declineOffer: (leagueId, marketId, offerId) => api.post(`${CMP}/league/${leagueId}/market/${marketId}/offer/${offerId}/reject?x-lang=es`),

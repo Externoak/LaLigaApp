@@ -108,7 +108,8 @@ const OfertasTab = () => {
       await fantasyAPI.acceptOffer(
         leagueId,
         confirmModal.player.id, // marketId
-        confirmModal.offer.id
+        confirmModal.offer.id,
+        confirmModal.offer.money // offerMoney: la API lo exige en el body
       );
 
       toast.success(`Oferta aceptada por ${formatCurrency(confirmModal.offer.money)}`);
