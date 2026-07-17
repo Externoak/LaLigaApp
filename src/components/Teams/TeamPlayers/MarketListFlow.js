@@ -216,7 +216,9 @@ const MarketListFlow = ({
                             <div className="flex justify-between items-center">
                                 <span className="text-sm text-gray-600 dark:text-gray-400">Dinero disponible:</span>
                                 <span className="font-semibold text-gray-900 dark:text-white">
-                                    {teamMoney !== null ? `${formatNumberWithDots(teamMoney)}€` : 'Cargando...'}
+                                    {typeof teamMoney === 'number'
+                                        ? `${formatNumberWithDots(teamMoney)}€`
+                                        : teamMoney === null ? 'Cargando...' : 'No disponible'}
                                 </span>
                             </div>
                             <div className="flex justify-between items-center">

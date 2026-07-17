@@ -727,7 +727,7 @@ const Players = () => {
       {/* Loading State */}
       {isDataLoading && !isInitialLoading && (
         <div className="card p-8">
-          <LoadingSpinner />
+          <LoadingSpinner label={null} />
           <p className="text-center text-gray-500 dark:text-gray-400 mt-4">
             Cargando datos de mercado y tendencias...
           </p>
@@ -768,7 +768,7 @@ const Players = () => {
         {/* Loading more indicator */}
         {isLoadingMore && (
           <div className="flex justify-center py-8">
-            <LoadingSpinner />
+            <LoadingSpinner label={null} />
             <span className="ml-3 text-gray-500 dark:text-gray-400">Cargando más jugadores...</span>
           </div>
         )}

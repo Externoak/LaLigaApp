@@ -107,7 +107,9 @@ const BuyoutFlow = ({
                             <div className="flex justify-between items-center">
                                 <span className="text-sm text-gray-600 dark:text-gray-400">Dinero disponible:</span>
                                 <span className="font-semibold text-gray-900 dark:text-white">
-                                    {teamMoney !== null ? `${formatNumberWithDots(teamMoney)}€` : 'Cargando...'}
+                                    {typeof teamMoney === 'number'
+                                        ? `${formatNumberWithDots(teamMoney)}€`
+                                        : teamMoney === null ? 'Cargando...' : 'No disponible'}
                                 </span>
                             </div>
                             <div className="flex justify-between items-center">
@@ -167,7 +169,7 @@ const BuyoutFlow = ({
                                     </p>
                                 </div>
                             )}
-                            {teamMoney !== null && increaseAmount && parseInt(increaseAmount) > teamMoney && (
+                            {typeof teamMoney === 'number' && increaseAmount && parseInt(increaseAmount) > teamMoney && (
                                 <p className="text-sm text-red-600 dark:text-red-400">
                                     No tienes suficiente dinero. Máximo: {formatNumberWithDots(teamMoney)}€
                                 </p>
@@ -185,7 +187,7 @@ const BuyoutFlow = ({
                             <button
                                 type="button"
                                 onClick={goToConfirm}
-                                disabled={!increaseAmount || parseInt(increaseAmount) <= 0 || (teamMoney !== null && parseInt(increaseAmount) > teamMoney)}
+                                disabled={!increaseAmount || parseInt(increaseAmount) <= 0 || (typeof teamMoney === 'number' && parseInt(increaseAmount) > teamMoney)}
                                 className="flex-1 bg-yellow-500 hover:bg-yellow-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors"
                             >
                                 Aumentar

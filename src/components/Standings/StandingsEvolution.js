@@ -133,7 +133,7 @@ const StandingsEvolution = ({ leagueId, currentWeekNumber, userTeamId }) => {
         <div className="border-t border-gray-200 dark:border-gray-700 p-4">
           {isLoading && (
             <div className="flex items-center gap-3 py-8 justify-center text-sm text-gray-500 dark:text-gray-400">
-              <LoadingSpinner size="sm" />
+              <LoadingSpinner size="small" label={null} />
               Cargando jornadas…
             </div>
           )}

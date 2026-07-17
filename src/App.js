@@ -77,10 +77,7 @@ function AppRoutes() {
           top: typeof window !== 'undefined' && window.electronAPI ? 0 : 'auto',
           transform: typeof window !== 'undefined' && window.electronAPI ? 'translateY(0)' : 'none'
         }}>
-          <div className="flex items-center">
-            <LoadingSpinner />
-            <p className="ml-4 text-gray-600 dark:text-gray-400">Cargando módulo...</p>
-          </div>
+          <LoadingSpinner label="Cargando módulo..." />
         </div>
       }>
       <Routes>

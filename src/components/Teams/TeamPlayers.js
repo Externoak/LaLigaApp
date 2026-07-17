@@ -22,6 +22,24 @@ import MarketListFlow from './TeamPlayers/MarketListFlow';
 import BidFlow from './TeamPlayers/BidFlow';
 import ShieldFlow from './TeamPlayers/ShieldFlow';
 
+/**
+ * Lee el saldo de la respuesta de getTeamMoney de forma defensiva.
+ *
+ * El API puede responder 200 con el cuerpo vacío (ya nos pasó con cláusulas y
+ * ofertas) o cambiar la forma; antes hacíamos `if (data) setTeamMoney(data.teamMoney)`,
+ * así que un cuerpo vacío dejaba el saldo en null PARA SIEMPRE ("Cargando..."
+ * eterno en el modal).
+ *
+ * Devuelve un número si lo encuentra, o `undefined` = "no sabemos el saldo",
+ * que es distinto de `null` = "todavía cargando".
+ */
+const readTeamMoney = (response) => {
+    const data = response?.data;
+    const raw = typeof data === 'number' ? data : (data?.teamMoney ?? data?.money);
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : undefined;
+};
+
 const TeamPlayers = () => {
     const { teamId } = useParams();
     const leagueId = useAuthStore((state) => state.leagueId);
@@ -215,9 +233,11 @@ const TeamPlayers = () => {
             setSelectedPlayer({ player, playerTeam });
             buyoutFlow.open();
             const moneyResponse = await fantasyAPI.getTeamMoney(teamId);
-            if (moneyResponse?.data) setTeamMoney(moneyResponse.data.teamMoney);
+            setTeamMoney(readTeamMoney(moneyResponse));
         } catch (_error) {
-            setTeamMoney(0);
+            // undefined = "no sabemos el saldo". NO ponemos 0: sería mentira y
+            // además bloquearía el formulario como si no tuvieras dinero.
+            setTeamMoney(undefined);
         }
     }, [teamId, buyoutFlow]);
 
@@ -226,9 +246,9 @@ const TeamPlayers = () => {
             setSelectedPlayer({ player, playerTeam });
             marketListFlow.open();
             const moneyResponse = await fantasyAPI.getTeamMoney(teamId);
-            if (moneyResponse?.data) setTeamMoney(moneyResponse.data.teamMoney);
+            setTeamMoney(readTeamMoney(moneyResponse));
         } catch (_error) {
-            setTeamMoney(0);
+            setTeamMoney(undefined);
         }
     }, [teamId, marketListFlow]);
 
@@ -247,7 +267,7 @@ const TeamPlayers = () => {
             if (!userTeamId) throw new Error('No se pudo encontrar tu equipo');
 
             const moneyResponse = await fantasyAPI.getTeamMoney(userTeamId);
-            setTeamMoney(moneyResponse?.data ? moneyResponse.data.teamMoney : 0);
+            setTeamMoney(readTeamMoney(moneyResponse));
             setSelectedPlayer({ player, playerTeam });
             bidFlow.open();
         } catch (_error) {

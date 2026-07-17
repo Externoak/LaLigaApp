@@ -12,7 +12,9 @@ const LoadingState = ({ message, size = 'default', fullScreen = false }) => {
     return <LoadingSpinner size={size} fullScreen={fullScreen} />;
   }
 
-  const spinner = <LoadingSpinner size={size} fullScreen={false} />;
+  // label={null}: el mensaje contextual lo ponemos nosotros abajo; si dejáramos
+  // el de por defecto saldrían dos "Cargando..." seguidos.
+  const spinner = <LoadingSpinner size={size} fullScreen={false} label={null} />;
 
   if (fullScreen) {
     // Mirror LoadingSpinner: z-30 keeps the loading overlay below modal

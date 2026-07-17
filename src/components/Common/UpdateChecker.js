@@ -526,12 +526,8 @@ const UpdateChecker = () => {
               {/* Update Icon */}
               <div className="text-center mb-6">
                 <div className="inline-flex p-4 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  >
-                    <RefreshCw className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-                  </motion.div>
+                  {/* Giro por CSS: el shim de motion descarta animate/transition */}
+                  <RefreshCw className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
                   Actualizando LaLiga Fantasy
