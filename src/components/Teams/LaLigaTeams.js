@@ -14,6 +14,7 @@ import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
 import playerOwnershipService from '../../services/playerOwnershipService';
 import useMarketTrends from '../../hooks/useMarketTrends';
+import usePlayerFaceBackfill from '../../hooks/usePlayerFaceBackfill';
 import { getClauseTimeRemaining, isClauseExpiringSoon } from '../../utils/clauseUtils';
 
 const LaLigaTeams = () => {
@@ -46,6 +47,10 @@ const LaLigaTeams = () => {
     refetchOnMount: true,
     gcTime: 60 * 60 * 1000, // 1 hora
   });
+
+  // Rellena caras que el feed masivo marca como no-player pero cuyo detalle sí
+  // tiene foto; parchea la caché ['allPlayers'] compartida.
+  usePlayerFaceBackfill(playersData, leagueId);
 
   // Extract teams from players data
   const [teams, setTeams] = useState([]);

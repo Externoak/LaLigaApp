@@ -10,7 +10,7 @@ import teamService from '../../services/teamService';
 import { mapSpecialNameForTrends, findPlayerByNameAndPosition } from '../../utils/playerNameMatcher';
 import { validateClauseAmount } from '../../utils/validation';
 import { invalidateAfterClausePurchase } from '../../utils/cacheInvalidation';
-import { getPositionName, extractArray } from '../../utils/helpers';
+import { getPositionName, extractArray, readTeamMoney } from '../../utils/helpers';
 import { fetchAllTeamsData, extractTeamPlayers } from '../../utils/fetchAllTeamsData';
 
 import LoadingSpinner from '../Common/LoadingSpinner';
@@ -310,13 +310,15 @@ const Clauses = () => {
           if (currentUserTeam) {
             const userTeamId = currentUserTeam.id || currentUserTeam.team?.id;
             const moneyResponse = await fantasyAPI.getTeamMoney(userTeamId);
-            if (moneyResponse?.data) {
-              setTeamMoney(moneyResponse.data.teamMoney);
-            }
+            // Cuerpo vacío (200 sin datos) o forma inesperada => undefined, no
+            // null eterno; readTeamMoney nunca inventa un saldo 0.
+            setTeamMoney(readTeamMoney(moneyResponse));
           }
         }
       } catch (_err) {
-        setTeamMoney(0);
+        // NO ponemos 0: sería mentira y bloquearía el pago como si no tuvieras
+        // dinero. undefined = "saldo no disponible" (PaymentFlow lo maneja).
+        setTeamMoney(undefined);
         toast.error('Error al obtener información del equipo');
       }
     },
@@ -335,7 +337,7 @@ const Clauses = () => {
       if (!leagueId) throw new Error('League ID is required');
       if (!selectedClause.playerTeamId) throw new Error('Player Team ID is required');
       if (!validateClauseAmount(selectedClause.clausulaAmount)) {
-        throw new Error('Invalid clause amount');
+        throw new Error('Importe de cláusula no válido');
       }
 
       const response = await fantasyAPI.payBuyoutClause(

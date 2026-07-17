@@ -29,7 +29,7 @@ const TopPlayers = () => {
           Top Jugadores
         </h3>
         <div className="flex items-center justify-center py-8">
-          <LoadingSpinner size="sm" />
+          <LoadingSpinner size="small" />
         </div>
       </div>
     );

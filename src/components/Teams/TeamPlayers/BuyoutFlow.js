@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../../Common/Modal';
-import { formatNumberWithDots } from '../../../utils/helpers';
+import { formatNumberWithDots, isSuccessResponse } from '../../../utils/helpers';
+import { createMoneyInputHandler } from '../../../utils/moneyInput';
 import { fantasyAPI } from '../../../services/api';
 
 /**
@@ -66,7 +67,7 @@ const BuyoutFlow = ({
             // así que no basta con comprobar response.data: aceptamos el status
             // 2xx como éxito (igual que ShieldFlow). Antes esto dejaba el modal
             // colgado y parecía que "Aumentar Cláusula" no funcionaba.
-            if (response?.status === 200 || response?.status === 204 || response?.data) {
+            if (isSuccessResponse(response)) {
                 await refetch();
                 setIncreaseAmount('');
                 flow.reset();
@@ -128,15 +129,12 @@ const BuyoutFlow = ({
                                 <input
                                     type="text"
                                     value={increaseAmount ? formatNumberWithDots(increaseAmount) : ''}
-                                    onChange={(e) => {
-                                        // Edición libre: solo filtramos no-dígitos. NO validamos aquí
-                                        // contra teamMoney: mientras el dinero carga vale null (el modal
-                                        // se abre antes de que llegue), y `n <= null` es false, así que
-                                        // la guarda anterior se tragaba TODAS las teclas en silencio
-                                        // (y para siempre si teamMoney quedaba en null/0). El exceso ya
-                                        // se avisa abajo en rojo y deshabilita el botón "Aumentar".
-                                        setIncreaseAmount(e.target.value.replace(/\D/g, ''));
-                                    }}
+                                    // Handler compartido (dígitos + cursor estable), como el resto de
+                                    // inputs de dinero. Edición libre a propósito: NO validar aquí
+                                    // contra teamMoney — con teamMoney null/0 la guarda antigua se
+                                    // tragaba todas las teclas; el exceso ya se avisa en rojo abajo
+                                    // y deshabilita el botón "Aumentar".
+                                    onChange={createMoneyInputHandler(setIncreaseAmount)}
                                     placeholder="Ingresa la cantidad..."
                                     className="input-field w-full pr-8"
                                 />

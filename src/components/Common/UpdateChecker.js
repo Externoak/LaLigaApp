@@ -184,7 +184,7 @@ const UpdateChecker = () => {
         setShowUpdateModal(false);
       } else {
         // Avoid creating new Error objects that might cause recursion
-        const errorMsg = (result && result.error) || 'Update failed - no result returned';
+        const errorMsg = (result && result.error) || 'La actualización no devolvió resultado';
 
         // If it's already a stack overflow error, don't wrap it in another Error
         if (typeof errorMsg === 'string' && errorMsg.includes('Maximum call stack size exceeded')) {
@@ -366,11 +366,12 @@ const UpdateChecker = () => {
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                      <motion.div
-                        className="bg-blue-600 h-2 rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${updateProgress}%` }}
-                        transition={{ duration: 0.3 }}
+                      {/* Ancho por style + transición CSS: el shim de motion descarta
+                          animate, y un div de bloque sin width ocupa el 100% (la barra
+                          se veía llena desde el 0%). */}
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${updateProgress}%` }}
                       />
                     </div>
                   </div>
@@ -555,20 +556,13 @@ const UpdateChecker = () => {
 
                 {/* Animated Progress Bar */}
                 <div className="relative w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
-                  <motion.div
-                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full shadow-sm"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${updateProgress}%` }}
-                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  {/* Ancho por style + transición CSS (el shim descarta animate).
+                      Eliminado el "shimmer": sin animación quedaba como una franja
+                      blanca estática encima de la barra. */}
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full shadow-sm transition-all duration-500"
+                    style={{ width: `${updateProgress}%` }}
                   />
-                  {/* Shimmer effect */}
-                  {updateProgress > 0 && updateProgress < 100 && (
-                    <motion.div
-                      className="absolute top-0 left-0 h-full w-1/2 bg-gradient-to-r from-transparent via-white via-transparent opacity-20"
-                      animate={{ x: ['-100%', '200%'] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    />
-                  )}
                 </div>
               </div>
 

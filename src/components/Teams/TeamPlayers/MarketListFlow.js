@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { ShoppingCart, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../../Common/Modal';
-import { formatNumberWithDots } from '../../../utils/helpers';
+import { formatNumberWithDots, isSuccessResponse } from '../../../utils/helpers';
 import { fantasyAPI } from '../../../services/api';
 import { invalidateAfterMarketListing } from '../../../utils/cacheInvalidation';
 import { createMoneyInputHandler } from '../../../utils/moneyInput';
@@ -61,11 +61,14 @@ const MarketListFlow = ({
             const playerId = selectedPlayer.playerTeam.id || selectedPlayer.playerTeam.playerTeamId;
             const response = await fantasyAPI.sellPlayerToMarket(leagueId, playerId, parseInt(salePrice));
 
-            if (response?.data) {
+            // Éxito por status: la API puede devolver 200 con cuerpo vacío (mismo
+            // patrón que cláusulas y ofertas). Si se gatea en response.data, la
+            // venta se aplica en el servidor pero el modal se queda colgado.
+            if (isSuccessResponse(response)) {
                 await invalidateAfterMarketListing(queryClient, leagueId, teamId);
                 await refetch();
 
-                queryClient.setQueryData(['market', leagueId], (oldData) => {
+                if (response?.data) queryClient.setQueryData(['market', leagueId], (oldData) => {
                     if (!oldData?.data) return oldData;
                     const playerAlreadyInMarket = oldData.data.some(marketPlayer =>
                         marketPlayer.playerMaster?.id === selectedPlayer.player.id ||
@@ -102,6 +105,7 @@ const MarketListFlow = ({
                 updated.delete(`add_${playerKey}`);
                 return updated;
             });
+            toast.error('No se pudo poner el jugador en el mercado');
         } finally {
             listFlow.setProcessing(false);
         }
@@ -131,7 +135,7 @@ const MarketListFlow = ({
             withdrawFlow.reset();
             onReset?.();
 
-            if (response?.status === 200 || response?.status === 204 || response?.data) {
+            if (isSuccessResponse(response)) {
                 await invalidateAfterMarketListing(queryClient, leagueId, teamId);
                 await refetch();
 

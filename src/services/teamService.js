@@ -51,7 +51,7 @@ class TeamService {
       }
       
       if (!user) {
-        throw new Error('User is required');
+        throw new Error('Se requiere un usuario');
       }
       
       // Check for userId, id, sub, or oid property
@@ -95,7 +95,7 @@ class TeamService {
       this.userTeamId = userTeam.team?.id;
 
       if (!this.userTeamId) {
-        throw new Error('Could not extract team ID from user team data');
+        throw new Error('No se pudo obtener el ID de tu equipo');
       }
 
       // Load team data and money

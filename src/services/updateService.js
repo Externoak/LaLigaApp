@@ -55,7 +55,7 @@ class UpdateService {
             const versionData = await response.json();
 
             if (!versionData || !versionData.version) {
-                throw new Error('Invalid version data format - missing version field');
+                throw new Error('Formato de datos de versión no válido: falta el campo version');
             }
 
             const latestVersion = versionData.version.replace(/^v/, '');
@@ -109,7 +109,7 @@ class UpdateService {
 
             // Prevent stack overflow by checking for existing error conditions
             if (!updateInfo || typeof updateInfo !== 'object') {
-                throw new Error('Invalid update info provided');
+                throw new Error('Información de actualización no válida');
             }
 
             if (this.isElectron) {
@@ -193,7 +193,7 @@ class UpdateService {
 
             return {
                 success: true,
-                message: 'Update applied successfully. The app will refresh.',
+                message: 'Actualización aplicada correctamente. La aplicación se recargará.',
                 requiresRestart: true,
                 restartMethod: 'reload'
             };
@@ -211,7 +211,7 @@ class UpdateService {
             const downloadUrl = updateInfo.downloadUrl || this.getGitHubDownloadUrl();
 
             if (!downloadUrl) {
-                throw new Error('No download URL available for update');
+                throw new Error('No hay URL de descarga disponible para la actualización');
             }
 
             if (window.electronAPI?.downloadAndInstallUpdate) {
@@ -227,7 +227,7 @@ class UpdateService {
 
                 return {
                     success: true,
-                    message: 'Update downloaded and installed. The app will restart.',
+                    message: 'Actualización descargada e instalada. La aplicación se reiniciará.',
                     requiresRestart: true,
                     restartMethod: 'electron'
                 };
@@ -244,14 +244,14 @@ class UpdateService {
 
             return {
                 success: true,
-                message: 'Download started! The zip file will be saved to your Downloads folder. Please extract it and replace the current application files manually, then restart the app.',
+                message: 'Descarga iniciada. El ZIP se guardará en tu carpeta de Descargas: extráelo, reemplaza manualmente los archivos de la aplicación y reinicia la app.',
                 requiresRestart: false,
                 instructions: {
-                    step1: '1. Go to your Downloads folder',
-                    step2: '2. Find and extract LaLigaApp.zip',
-                    step3: '3. Replace the current application files with the extracted files',
-                    step4: '4. Restart the application',
-                    downloadPath: 'Downloads folder',
+                    step1: '1. Ve a tu carpeta de Descargas',
+                    step2: '2. Busca y extrae LaLigaApp.zip',
+                    step3: '3. Reemplaza los archivos actuales de la aplicación por los extraídos',
+                    step4: '4. Reinicia la aplicación',
+                    downloadPath: 'Carpeta de Descargas',
                     fileName: 'LaLigaApp.zip'
                 }
             };

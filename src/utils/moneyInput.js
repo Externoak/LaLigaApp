@@ -21,7 +21,14 @@ export const createMoneyInputHandler = (setValue) => (e) => {
     }
 
     const digitsOnly = rawValue.replace(/\D/g, '');
-    if (!digitsOnly) return;
+    if (!digitsOnly) {
+        // El usuario dejó el campo sin dígitos (p. ej. seleccionó todo y escribió
+        // "-"). Hay que sincronizar el estado a '': si volviéramos sin llamar a
+        // setValue, el input controlado mostraría el carácter tecleado mientras el
+        // estado conserva el número anterior, y ambos quedarían desincronizados.
+        setValue('');
+        return;
+    }
 
     setValue(digitsOnly);
 

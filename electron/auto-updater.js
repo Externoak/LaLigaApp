@@ -513,7 +513,7 @@ function replaceAppFiles(newAppPath) {
 
             resolve({
                 success: true,
-                message: 'Application files replaced successfully',
+                message: 'Archivos de la aplicación reemplazados correctamente',
                 lockedFiles: lockedFiles.length,
                 skippedFiles: skippedFiles.length,
                 pendingRestart: lockedFiles.length > 0

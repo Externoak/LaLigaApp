@@ -205,6 +205,29 @@ export const extractArray = (response) => {
     return [];
 };
 
+// La API acepta como éxito cualquier 2xx, y varios endpoints (cláusulas,
+// blindaje, ofertas, mercado) responden 200/204 con cuerpo vacío. ApiClient
+// sólo lanza en respuestas !ok, así que aquí un cuerpo vacío NO significa fallo:
+// gatear en response.data dejaba el modal colgado tras aplicar la acción.
+export const isSuccessResponse = (response) => {
+    if (!response) return false;
+    const status = response.status;
+    if (typeof status === 'number') return status >= 200 && status < 300;
+    return response.data != null;
+};
+
+// Normaliza la respuesta de getTeamMoney, cuyo cuerpo puede venir como número,
+// { teamMoney } o { money }. Devuelve un número si lo encuentra, o `undefined`
+// = "no sabemos el saldo", distinto de `null` = "todavía cargando". Nunca
+// devuelve 0 por un cuerpo vacío: sería mentira y bloquearía los formularios.
+export const readTeamMoney = (response) => {
+    const data = response?.data;
+    const raw = typeof data === 'number' ? data : (data?.teamMoney ?? data?.money);
+    if (raw == null) return undefined; // Number(null) sería 0: un null explícito NO es saldo 0
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : undefined;
+};
+
 // Reemplaza el contenido del contenedor de un <img> roto por un badge de
 // iniciales, construyendo nodos DOM (textContent) en lugar de innerHTML para
 // que los nombres (datos scrapeados/de API) nunca se interpreten como marcado.

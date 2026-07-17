@@ -282,7 +282,7 @@ export const useAuthStore = create(
             const refreshTokenValue = state.tokens?.refresh_token;
 
             if (!refreshTokenValue) {
-              throw new Error('No refresh token available');
+              throw new Error('No hay token de renovación disponible');
             }
 
             // Check if tokens are actually expired before refreshing
@@ -336,7 +336,7 @@ export const useAuthStore = create(
                   isAuthenticated: true
                 });
 
-                throw new Error('Refresh token is expired or invalid. Please login again when your session expires.');
+                throw new Error('La sesión guardada ha caducado o no es válida. Vuelve a iniciar sesión cuando expire tu sesión.');
               }
 
               // For other errors, logout user

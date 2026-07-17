@@ -3,6 +3,7 @@ import { Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Modal from '../../Common/Modal';
 import { fantasyAPI } from '../../../services/api';
+import { isSuccessResponse } from '../../../utils/helpers';
 
 /**
  * ShieldFlow — modal #1 (info) + modal #2 (confirm) for shielding a player.
@@ -40,7 +41,7 @@ const ShieldFlow = ({
                 selectedPlayer.playerTeam.playerTeamId || selectedPlayer.playerTeam.id
             );
 
-            if (response?.status === 200 || response?.data) {
+            if (isSuccessResponse(response)) {
                 await refetch();
                 flow.reset();
                 onReset?.();

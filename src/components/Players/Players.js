@@ -12,6 +12,7 @@ import PlayerDetailModal from '../Common/PlayerDetailModal';
 import marketTrendsService from '../../services/marketTrendsService';
 import playerOwnershipService from '../../services/playerOwnershipService';
 import useMarketTrends from '../../hooks/useMarketTrends';
+import usePlayerFaceBackfill from '../../hooks/usePlayerFaceBackfill';
 import { mapSpecialNameForTrends, normalizePlayerName } from '../../utils/playerNameMatcher';
 
 // La API marca así a los jugadores fuera de la liga (bajas o, en pretemporada,
@@ -228,6 +229,10 @@ const Players = () => {
     refetchOnMount: true,
     gcTime: 60 * 60 * 1000, // 1 hora en caché
   });
+
+  // Rellena caras que el feed masivo marca como no-player pero cuyo detalle sí
+  // tiene foto; parchea la caché ['allPlayers'] compartida.
+  usePlayerFaceBackfill(playersData, leagueId);
 
   // Optional: Get market data for pricing information (if available)
   const { data: marketData, refetch: refetchMarket } = useQuery({

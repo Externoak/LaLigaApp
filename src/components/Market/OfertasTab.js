@@ -56,7 +56,7 @@ const OfertasTab = () => {
       const marketData = marketResponse.data || marketResponse;
 
       if (!Array.isArray(marketData)) {
-        throw new Error('No market data available');
+        throw new Error('No hay datos del mercado disponibles');
       }
 
       // Filter players you own that have offers (marketPlayerTeam type with numberOfOffers > 0)

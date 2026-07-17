@@ -271,7 +271,7 @@ const BidFlow = ({
                             </div>
                         </div>
 
-                        {teamMoney !== null && (
+                        {typeof teamMoney === 'number' && (
                             <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 mb-6">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -326,7 +326,7 @@ const BidFlow = ({
                             <button
                                 type="button"
                                 onClick={goToConfirm}
-                                disabled={!bidAmount || parseInt(bidAmount) < (selectedPlayer.player.marketValue || 0) || (teamMoney !== null && parseInt(bidAmount) > (teamService.getAvailableMoneyForBids ? teamService.getAvailableMoneyForBids() : teamMoney))}
+                                disabled={!bidAmount || parseInt(bidAmount) < (selectedPlayer.player.marketValue || 0) || (typeof teamMoney === 'number' && parseInt(bidAmount) > (teamService.getAvailableMoneyForBids ? teamService.getAvailableMoneyForBids() : teamMoney))}
                                 className="flex-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors"
                             >
                                 Continuar

@@ -22,7 +22,7 @@ const LoadingSpinner = ({ size = 'default', fullScreen = false, label = 'Cargand
     <div
       role="status"
       aria-label={label || 'Cargando'}
-      className={`${sizeClasses[size]} border-4 border-primary-200 border-t-primary-400 rounded-full animate-spin`}
+      className={`${sizeClasses[size] || sizeClasses.default} border-4 border-primary-200 border-t-primary-400 rounded-full animate-spin`}
     />
   );
 

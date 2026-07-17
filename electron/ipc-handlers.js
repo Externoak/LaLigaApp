@@ -284,7 +284,7 @@ function registerIpcHandlers(deps = {}) {
                     mainWindow.webContents.send('update-progress', {
                         step: 'backup',
                         progress: 50,
-                        message: 'Creating backup...'
+                        message: 'Creando copia de seguridad...'
                     });
                 }
             }
@@ -303,7 +303,7 @@ function registerIpcHandlers(deps = {}) {
                     mainWindow.webContents.send('update-progress', {
                         step: 'replace',
                         progress: 75,
-                        message: 'Replacing files...'
+                        message: 'Reemplazando archivos...'
                     });
                 }
             }

@@ -14,31 +14,13 @@ import teamService from '../../services/teamService';
 import useModalFlow from '../../hooks/useModalFlow';
 import useMarketTrends from '../../hooks/useMarketTrends';
 import useTeamService from '../../hooks/useTeamService';
-import { getPositionName, getPositionColor, extractArray } from '../../utils/helpers';
+import { getPositionName, getPositionColor, extractArray, readTeamMoney } from '../../utils/helpers';
 
 import PlayerRow from './TeamPlayers/PlayerRow';
 import BuyoutFlow from './TeamPlayers/BuyoutFlow';
 import MarketListFlow from './TeamPlayers/MarketListFlow';
 import BidFlow from './TeamPlayers/BidFlow';
 import ShieldFlow from './TeamPlayers/ShieldFlow';
-
-/**
- * Lee el saldo de la respuesta de getTeamMoney de forma defensiva.
- *
- * El API puede responder 200 con el cuerpo vacío (ya nos pasó con cláusulas y
- * ofertas) o cambiar la forma; antes hacíamos `if (data) setTeamMoney(data.teamMoney)`,
- * así que un cuerpo vacío dejaba el saldo en null PARA SIEMPRE ("Cargando..."
- * eterno en el modal).
- *
- * Devuelve un número si lo encuentra, o `undefined` = "no sabemos el saldo",
- * que es distinto de `null` = "todavía cargando".
- */
-const readTeamMoney = (response) => {
-    const data = response?.data;
-    const raw = typeof data === 'number' ? data : (data?.teamMoney ?? data?.money);
-    const value = Number(raw);
-    return Number.isFinite(value) ? value : undefined;
-};
 
 const TeamPlayers = () => {
     const { teamId } = useParams();
