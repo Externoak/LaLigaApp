@@ -127,10 +127,13 @@ const BuyoutFlow = ({
                                     type="text"
                                     value={increaseAmount ? formatNumberWithDots(increaseAmount) : ''}
                                     onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, '');
-                                        if (value === '' || (parseInt(value) <= teamMoney && parseInt(value) >= 0)) {
-                                            setIncreaseAmount(value);
-                                        }
+                                        // Edición libre: solo filtramos no-dígitos. NO validamos aquí
+                                        // contra teamMoney: mientras el dinero carga vale null (el modal
+                                        // se abre antes de que llegue), y `n <= null` es false, así que
+                                        // la guarda anterior se tragaba TODAS las teclas en silencio
+                                        // (y para siempre si teamMoney quedaba en null/0). El exceso ya
+                                        // se avisa abajo en rojo y deshabilita el botón "Aumentar".
+                                        setIncreaseAmount(e.target.value.replace(/\D/g, ''));
                                     }}
                                     placeholder="Ingresa la cantidad..."
                                     className="input-field w-full pr-8"
