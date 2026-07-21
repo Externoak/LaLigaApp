@@ -15,7 +15,7 @@ import marketTrendsService from '../../services/marketTrendsService';
 import playerOwnershipService from '../../services/playerOwnershipService';
 import useMarketTrends from '../../hooks/useMarketTrends';
 import usePlayerFaceBackfill from '../../hooks/usePlayerFaceBackfill';
-import { getClauseTimeRemaining, isClauseExpiringSoon } from '../../utils/clauseUtils';
+import { getClauseLockState } from '../../utils/clauseUtils';
 
 const LaLigaTeams = () => {
   const leagueId = useAuthStore((state) => state.leagueId);
@@ -220,6 +220,7 @@ const LaLigaTeams = () => {
     // Player data comes pre-processed with trendData and actualOwner from useMemo
     const trendData = player.trendData;
     const ownerData = player.actualOwner;
+    const clauseState = getClauseLockState(ownerData?.buyoutClauseLockedEndTime);
 
     // Get the best available market value
     const marketValue = trendData?.valor || player.marketValue || player.valor || player.value || 0;
@@ -257,21 +258,14 @@ const LaLigaTeams = () => {
               {getPositionName(parseInt(player.positionId))}
             </span>
 
-            {/* Status Badge */}
-            {ownerData?.buyoutClause ? (
-              <span className={`badge flex items-center ${
-                ownerData.buyoutClauseLockedEndTime 
-                  ? isClauseExpiringSoon(ownerData.buyoutClauseLockedEndTime)
-                    ? 'bg-red-900 text-white' 
-                    : 'bg-yellow-800 text-white'
-                  : 'bg-green-900 text-white'
-              }`} title={
-                ownerData.buyoutClauseLockedEndTime
-                  ? `Cláusula bloqueada - Se abre en ${getClauseTimeRemaining(ownerData.buyoutClauseLockedEndTime)}`
-                  : 'Cláusula disponible - Puede ser activada'
-              }>
-                <Shield className="w-3 h-3 mr-1" />
-                {ownerData.buyoutClauseLockedEndTime ? 'Bloqueado' : 'Disponible'}
+            {/* Status Badge: manager al que pertenece (o Libre si no tiene dueño).
+                Comprobamos la PROPIEDAD (ownerData), no la cláusula: si un
+                jugador tiene dueño pero no llega el dato de cláusula, seguía
+                saliendo "Libre" por error. El estado de cláusula va en el cuerpo. */}
+            {ownerData ? (
+              <span className="badge bg-blue-900 text-white flex items-center gap-1 max-w-[62%]" title={`Manager: ${ownerData.ownerName || 'Desconocido'}`}>
+                <User className="w-3 h-3 flex-shrink-0" />
+                <span className="truncate min-w-0">{ownerData.ownerName || 'Ocupado'}</span>
               </span>
             ) : (
               <span className="badge bg-green-900 text-white flex items-center">
@@ -366,22 +360,40 @@ const LaLigaTeams = () => {
           {/* Buyout Clause Info */}
           {ownerData?.buyoutClause && (
             <div className="pt-3 border-t border-gray-200 dark:border-dark-border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5" />
+                  Cláusula
+                </span>
+                <span className={`badge ${
+                  clauseState.isOpen
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : clauseState.expiringSoon
+                      ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                }`}>
+                  {clauseState.isOpen ? 'Clausulable' : 'Bloqueada'}
+                </span>
+              </div>
               <div className="bg-yellow-50 dark:bg-gray-400/20 rounded-lg p-3">
-                <p className="text-sm text-gray-600 dark:text-gray-300">Cláusula</p>
                 <p className="text-xl font-bold text-yellow-600 dark:text-yellow-400">
                   {formatCurrency(ownerData.buyoutClause)}
                 </p>
               </div>
 
-              {ownerData.buyoutClauseLockedEndTime && (
-                <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 mt-2">
+              {!clauseState.isOpen && (
+                <div className="bg-gray-50 dark:bg-gray-800/40 rounded-lg p-3 mt-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-red-600 dark:text-red-300 flex items-center gap-1">
+                    <span className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      Tiempo restante
+                      Se libera en
                     </span>
-                    <span className="text-sm font-bold text-red-600 dark:text-red-400">
-                      {getClauseTimeRemaining(ownerData.buyoutClauseLockedEndTime)}
+                    <span className={`text-sm font-bold ${
+                      clauseState.expiringSoon
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}>
+                      {clauseState.timeRemaining}
                     </span>
                   </div>
                 </div>

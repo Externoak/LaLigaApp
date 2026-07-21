@@ -5,6 +5,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiRequest: (options) => ipcRenderer.invoke('api-request', options),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // Interactive OAuth (Google/social) login — opens a controlled login window
+  // and resolves with the captured authorization code.
+  startOAuthLogin: (config) => ipcRenderer.invoke('start-oauth-login', config),
+
   // Auto-update (updateService.js)
   downloadAndInstallUpdate: (data) => ipcRenderer.invoke('download-and-install-update', data),
   restartApp: () => ipcRenderer.invoke('restart-app'),

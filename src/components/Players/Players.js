@@ -58,9 +58,9 @@ const PlayerGridCard = React.memo(function PlayerGridCard({ player }) {
               En Venta
             </span>
           ) : player.actualOwner ? (
-            <span className="badge bg-blue-900 text-white flex items-center">
-              <User className="w-3 h-3 mr-1" />
-              Ocupado
+            <span className="badge bg-blue-900 text-white flex items-center gap-1 max-w-[60%]" title={`Manager: ${player.actualOwner.ownerName || 'Desconocido'}`}>
+              <User className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate min-w-0">{player.actualOwner.ownerName || 'Ocupado'}</span>
             </span>
           ) : (
             <span className="badge bg-green-900 text-white flex items-center">
@@ -317,8 +317,11 @@ const Players = () => {
     const marketMap = new Map();
     if (marketArray) {
       for (const item of marketArray) {
-        if (item?.playerMaster?.id) {
-          marketMap.set(item.playerMaster.id, {
+        if (item?.playerMaster?.id != null) {
+          // Clave normalizada a String: el feed /players trae id string ("68")
+          // y el mercado puede traerlo con otro tipo — sin coacción, el get()
+          // fallaba y "En Venta"/precio no se asociaban al jugador.
+          marketMap.set(String(item.playerMaster.id), {
             salePrice: item.salePrice,
             ownerName: item.ownerName,
             isClausePlayer: item.discr === 'marketPlayerTeam',
@@ -351,7 +354,7 @@ const Players = () => {
     }
 
     return basePlayers.map(player => {
-      const marketInfo = marketMap.get(player.id);
+      const marketInfo = marketMap.get(String(player.id));
 
       // Always initialize trend data as null, then conditionally populate
       let trendData = null;

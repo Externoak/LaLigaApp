@@ -1,4 +1,10 @@
-﻿# 🏆 LaLiga Fantasy App
+﻿# LaLiga Fantasy App
+
+[![Version](https://img.shields.io/badge/version-3.5.3-green.svg)](https://github.com/Externoak/LaLigaApp)
+[![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
+![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
+[![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#plataformas)
+![Status](https://github.com/Externoak/LaLigaApp/actions/workflows/release.yml/badge.svg)
 
 **🌐 Language / Idioma:** [🇪🇸 Español](README.md) | [en English](README_EN.md)
 
@@ -8,13 +14,17 @@
 
 > Una plataforma integral de gestión de La Liga Fantasy con información extra de mercado y onces probables de https://www.futbolfantasy.com/
 
-[![Version](https://img.shields.io/badge/version-3.5.2-green.svg)](https://github.com/Externoak/LaLigaApp)
-[![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
-[![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#plataformas)
-![Status](https://github.com/Externoak/LaLigaApp/actions/workflows/release.yml/badge.svg)
+##  Cómo usar la aplicación
 
-## 📖 Descripción general
+### Descarga y instalación rápida
+
+1. **Descargar**: Ve a [Releases](https://github.com/Externoak/LaLigaApp/releases) y descarga la última versión
+2. **Descomprimir**: Extrae el archivo ZIP descargado
+3. **Ejecutar**: Haz doble clic en el archivo `.exe` proporcionado
+
+¡Listo! No requiere instalación adicional.
+
+##  Descripción general
 
 LaLiga Fantasy Web es una aplicación rica en funciones para gestionar tus equipos de LaLiga Fantasy. Construida con tecnologías web modernas, proporciona una interfaz intuitiva para la gestión de equipos, comercio de jugadores, análisis de mercado y seguimiento de ligas en tiempo real.
 
@@ -30,15 +40,6 @@ Imagen del menu principal:
 
 <img src="docs/LaLigaAppMainPage.png">
 
-## 📥 Cómo usar la aplicación
-
-### Descarga y instalación rápida
-
-1. **Descargar**: Ve a [Releases](https://github.com/Externoak/LaLigaApp/releases) y descarga la última versión
-2. **Descomprimir**: Extrae el archivo ZIP descargado
-3. **Ejecutar**: Haz doble clic en el archivo `.exe` proporcionado
-
-¡Listo! No requiere instalación adicional.
 
 ## 🔐 Privacidad y Seguridad
 
@@ -156,10 +157,6 @@ Variables de entorno
 Backend:
 - APP_PORT - Puerto del servidor (default: 3005)
 
-Sobre tu comentario de reducir el tamaño del backend: con npm ci --only=production y el usuario no-root ya debería estar bastante optimizado. Si quieres ir más allá podrías usar una imagen distroless pero es opcional.
-
-Prueba los cambios a ver si funcionan bien y avísame si tienes dudas sobre algún punto.
-
 ## 🏗️ Estructura del proyecto
 
 ```
@@ -179,10 +176,11 @@ LaLigaApp/
 │   ├── stores/           # Gestión de estado (Zustand)
 │   ├── styles/           # Estilos globales y Tailwind
 │   └── utils/            # Funciones de utilidad
+├── server/                # Servidor unificado (estáticos + proxy CORS de desarrollo)
+├── electron/              # Módulos del proceso principal de Electron
 ├── scripts/              # Scripts de build y despliegue
-├── main.js               # Proceso principal de Electron
+├── main.js               # Bootstrap del proceso principal de Electron
 ├── preload.js            # Script de preload de Electron
-├── http-proxy.js         # Proxy CORS de desarrollo
 └── tailwind.config.js    # Configuración de Tailwind CSS
 ```
 
@@ -192,7 +190,7 @@ LaLigaApp/
 - **[React 18](https://reactjs.org/)** - Biblioteca de UI basada en componentes
 - **[React Router v6](https://reactrouter.com/)** - Enrutamiento del lado cliente
 - **[Tailwind CSS](https://tailwindcss.com/)** - Framework CSS utility-first
-- **[Framer Motion](https://www.framer.com/motion/)** - Biblioteca de animaciones
+- **Animaciones ligeras** - Shim propio (`motionShim`), sin librería de animación externa
 - **[React Query](https://tanstack.com/query/)** - Obtención de datos y caché
 
 ### Gestión de estado
@@ -227,6 +225,7 @@ La aplicación usa un servidor unificado que sirve tanto la aplicación React co
 ### Autenticación
 
 La app usa OAuth2 con el tenant Azure B2C de LaLiga:
+- **Login con Google en un clic** (app de escritorio): abre la ventana oficial de LaLiga, inicias sesión y la app captura tu sesión automáticamente — sin copiar el token a mano
 - OAuth de Google para login social
 - Autenticación email/contraseña
 - Gestión de tokens JWT con refresco automático

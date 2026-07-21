@@ -82,7 +82,7 @@ const SidebarHeader = React.memo(function SidebarHeader({ leagueName, onChangeLe
     <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border">
       <div className="flex-1 text-center">
         <div className="flex flex-col items-center gap-2">
-          <img src="./logo_icon_FANTASY.png" alt="LaLiga Fantasy" className="w-50 h-10 object-contain rounded-lg px-3 py-1 bg-gray-900 dark:bg-transparent dark:px-0 dark:py-0" onError={onLogoError} />
+          <img src="./logo_icon_FANTASY.png" alt="LaLiga Fantasy" className="w-full max-w-[200px] h-auto object-contain rounded-lg px-3 py-1.5 bg-gray-900 dark:bg-transparent dark:px-1 dark:py-1" onError={onLogoError} />
           <h1 className="text-2xl font-bold text-center" style={{ display: 'none' }}>
             <span className="bg-gradient-to-r from-red-300 via-red-400 to-red-500 bg-clip-text text-transparent">LaLiga Fantasy</span>
           </h1>

@@ -39,3 +39,17 @@ export const isClauseExpiringSoon = (clauseEndTime) => {
     const diffHours = (new Date(clauseEndTime) - new Date()) / HOUR_MS;
     return diffHours > 0 && diffHours <= 24;
 };
+
+/**
+ * Estado de bloqueo listo para pintar, unificado para todas las vistas.
+ * `isOpen` cubre tanto "nunca estuvo bloqueada" como "el bloqueo ya expiró",
+ * evitando pintar una cuenta atrás (o un "Disponible") cuando ya es clausulable.
+ */
+export const getClauseLockState = (clauseEndTime) => {
+    const isOpen = !clauseEndTime || new Date(clauseEndTime) <= new Date();
+    return {
+        isOpen,
+        expiringSoon: !isOpen && isClauseExpiringSoon(clauseEndTime),
+        timeRemaining: isOpen ? null : getClauseTimeRemaining(clauseEndTime),
+    };
+};

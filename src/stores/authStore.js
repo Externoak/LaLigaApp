@@ -295,7 +295,7 @@ export const useAuthStore = create(
             }
 
             try {
-              const result = await authService.refreshToken(refreshTokenValue);
+              const result = await authService.refreshToken(refreshTokenValue, state.tokens?.client_id);
 
               if (abortController.signal.aborted) {
                 throw new Error('Refresh aborted');

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { motion } from '../../utils/motionShim';
 import { Calendar, Clock, Trophy, Users, Eye, Shield, RefreshCw } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
@@ -24,18 +24,26 @@ const Matches = () => {
   }, [actualWeekNumber, selectedWeek]);
 
   // Fetch matches for selected week
-  const { data: matches, isLoading, error, refetch } = useQuery({
+  const { data: matches, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['matches', selectedWeek],
     queryFn: () => fantasyAPI.getMatchday(selectedWeek),
     enabled: !!selectedWeek,
     retry: false,
     staleTime: 1 * 60 * 1000, // 1 minuto - resultados pueden actualizarse durante partidos
     gcTime: 5 * 60 * 1000, // 5 minutos en memoria
+    // Mantener los partidos de la jornada anterior mientras carga la nueva, para
+    // que al cambiar de jornada solo se actualice la lista de partidos y el
+    // selector no se desmonte ni parpadee (no se recarga toda la página).
+    placeholderData: keepPreviousData,
   });
 
-  if (isLoading) return <LoadingSpinner fullScreen={true} />;
+  // Pantalla completa SOLO en la carga inicial (aún no hay jornada seleccionada
+  // o es el primer fetch sin datos). Al cambiar de jornada, keepPreviousData
+  // evita el estado isLoading, así que caemos al render normal con el selector
+  // ya montado.
+  if (!selectedWeek || (isLoading && !matches)) return <LoadingSpinner fullScreen={true} />;
 
-  if (error) {
+  if (error && !matches) {
     return <ErrorDisplay
       error={error}
       title="Error al cargar las jornadas"
@@ -125,8 +133,11 @@ const Matches = () => {
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Jornadas
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Jornada {currentWeekNumber} - {sortedMatches.length} partidos
+          <p className="text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2">
+            <span>Jornada {currentWeekNumber} - {sortedMatches.length} partidos</span>
+            {isFetching && (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary-500" aria-label="Actualizando jornada" />
+            )}
             {sortedMatches.filter(isMatchLive).length > 0 && (
               <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 rounded-full text-xs font-medium animate-pulse">
                 🔴 {sortedMatches.filter(isMatchLive).length} EN VIVO

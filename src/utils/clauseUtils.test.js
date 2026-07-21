@@ -1,4 +1,4 @@
-import { getClauseTimeRemaining, getClauseStatusColor, isClauseExpiringSoon } from './clauseUtils';
+import { getClauseTimeRemaining, getClauseStatusColor, isClauseExpiringSoon, getClauseLockState } from './clauseUtils';
 
 const hoursFromNow = (h) => new Date(Date.now() + h * 60 * 60 * 1000).toISOString();
 
@@ -40,5 +40,26 @@ describe('isClauseExpiringSoon', () => {
         expect(isClauseExpiringSoon(hoursFromNow(30))).toBe(false);
         expect(isClauseExpiringSoon(hoursFromNow(-1))).toBe(false);
         expect(isClauseExpiringSoon(null)).toBe(false);
+    });
+});
+
+describe('getClauseLockState', () => {
+    test('abierta cuando no hay bloqueo o ya expiró (sin cuenta atrás)', () => {
+        expect(getClauseLockState(null)).toEqual({ isOpen: true, expiringSoon: false, timeRemaining: null });
+        expect(getClauseLockState(hoursFromNow(-3))).toEqual({ isOpen: true, expiringSoon: false, timeRemaining: null });
+    });
+
+    test('bloqueada <24h: expiringSoon con cuenta atrás', () => {
+        const state = getClauseLockState(hoursFromNow(5));
+        expect(state.isOpen).toBe(false);
+        expect(state.expiringSoon).toBe(true);
+        expect(state.timeRemaining).toMatch(/^(4|5)h \d+m$/);
+    });
+
+    test('bloqueada >24h: no expiringSoon con cuenta atrás en días', () => {
+        const state = getClauseLockState(hoursFromNow(50));
+        expect(state.isOpen).toBe(false);
+        expect(state.expiringSoon).toBe(false);
+        expect(state.timeRemaining).toMatch(/^2d 2h$/);
     });
 });

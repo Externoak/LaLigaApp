@@ -60,7 +60,15 @@ class PlayerOwnershipService {
           players: players.map(p => ({
             id: p.playerMaster?.id || p.id,
             name: p.playerMaster?.name || p.name,
-            nickname: p.playerMaster?.nickname || p.nickname
+            nickname: p.playerMaster?.nickname || p.nickname,
+            // El propio registro de plantilla ya trae el manager: es más fiable
+            // que el de la clasificación (que en pretemporada puede faltar).
+            managerName: p.manager?.managerName ?? null,
+            managerId: p.managerId ?? p.manager?.id ?? null,
+            // Cláusula del jugador (para el badge/estado en Equipos de La Liga).
+            buyoutClause: p.buyoutClause ?? null,
+            buyoutClauseLockedEndTime: p.buyoutClauseLockedEndTime ?? null,
+            isShielded: p.isShielded ?? false,
           })),
           managerName: team.managerName,
           managerId: team.managerId,
@@ -70,6 +78,18 @@ class PlayerOwnershipService {
 
       // Step 5: Build ownership map from cached data
       this.buildOwnershipMap(teams);
+
+      // Diagnóstico: si tras recorrer las plantillas el mapa queda vacío, el
+      // fallo está en la enumeración (clasificación) o en el walk, NO en la
+      // tarjeta. Se registra solo cuando el resultado es sospechoso.
+      if (teams.length === 0 || this.ownershipData.size === 0) {
+        // eslint-disable-next-line no-console
+        console.warn('[ownership] resultado sospechoso:', {
+          equiposEnClasificacion: teams.length,
+          plantillasObtenidas: teamsData.size,
+          jugadoresConDueno: this.ownershipData.size,
+        });
+      }
 
       this.isInitialized = true;
       this.lastUpdate = Date.now();
@@ -83,6 +103,8 @@ class PlayerOwnershipService {
       };
 
     } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn('[ownership] initialize falló:', error.message);
       return { success: false, error: error.message };
     }
   }
@@ -113,12 +135,13 @@ class PlayerOwnershipService {
       const marketArray = extractArray(marketResponse);
 
       marketArray.forEach(item => {
-        if (item.playerMaster?.id && item.ownerName) {
-          this.ownershipData.set(item.playerMaster.id, {
+        if (item.playerMaster?.id != null && item.ownerName) {
+          const key = String(item.playerMaster.id);
+          this.ownershipData.set(key, {
             ownerName: item.ownerName,
             teamId: null, // Market data doesn't provide team ID
             teamName: item.ownerName,
-            playerId: item.playerMaster.id,
+            playerId: key,
             source: 'market'
           });
         }
@@ -140,14 +163,22 @@ class PlayerOwnershipService {
       const cached = this.teamPlayersCache.get(team.id);
       if (cached && cached.players) {
         cached.players.forEach(player => {
-          if (player.id) {
+          if (player.id != null) {
+            // Clave SIEMPRE String: el feed /players busca con id string ("68")
+            // pero la plantilla puede traer playerMaster.id con otro tipo. Sin
+            // esta coacción el Map.get() del feed fallaba y TODO jugador con
+            // dueño salía como "Libre" en la tarjeta.
+            const key = String(player.id);
             // Only override if we don't have market data for this player
-            if (!this.ownershipData.has(player.id)) {
-              this.ownershipData.set(player.id, {
-                ownerName: cached.managerName,
+            if (!this.ownershipData.has(key)) {
+              this.ownershipData.set(key, {
+                ownerName: player.managerName || cached.managerName,
                 teamId: team.id,
                 teamName: team.name,
-                playerId: player.id,
+                playerId: key,
+                buyoutClause: player.buyoutClause,
+                buyoutClauseLockedEndTime: player.buyoutClauseLockedEndTime,
+                isShielded: player.isShielded,
                 source: 'team'
               });
             }
@@ -160,9 +191,10 @@ class PlayerOwnershipService {
 
   // Method to get player ownership on-demand (avoids duplicate calls)
   async getPlayerOwnershipLazy(playerId, leagueId) {
+    const key = playerId != null ? String(playerId) : null;
     // If we have cached data, return it
-    if (this.ownershipData.has(playerId)) {
-      return this.ownershipData.get(playerId);
+    if (key && this.ownershipData.has(key)) {
+      return this.ownershipData.get(key);
     }
 
     // If service isn't initialized, initialize it
@@ -170,7 +202,7 @@ class PlayerOwnershipService {
             await this.initialize(leagueId);
     }
 
-    return this.ownershipData.get(playerId) || null;
+    return (key && this.ownershipData.get(key)) || null;
   }
 
   // Clear cache for a specific league
@@ -186,11 +218,11 @@ class PlayerOwnershipService {
 
   // Obtener el propietario de un jugador
   getPlayerOwner(playerId) {
-    if (!this.isInitialized || !playerId) {
+    if (!this.isInitialized || playerId == null) {
       return null;
     }
 
-    return this.ownershipData.get(playerId) || null;
+    return this.ownershipData.get(String(playerId)) || null;
   }
 
   // Verificar si los datos están actualizados

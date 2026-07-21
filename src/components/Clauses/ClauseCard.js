@@ -148,7 +148,7 @@ const ClauseCard = React.memo(
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-red-600 dark:text-red-300 flex items-center gap-1">
                     <Clock className="w-3 h-3" aria-hidden="true" />
-                    Tiempo restante
+                    Se libera en
                   </span>
                   <span className="text-sm font-bold text-red-600 dark:text-red-400">
                     {getClauseTimeRemaining(clause.unlockTime, { noTimeValue: 'Disponible' })}

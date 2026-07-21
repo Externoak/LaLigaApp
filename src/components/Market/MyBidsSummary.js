@@ -38,6 +38,7 @@ const MyBidsSummary = ({ marketData, offersVersion: _offersVersion, teamReady })
 
   const totalCommitted = bids.reduce((sum, bid) => sum + (bid.amount || 0), 0);
   const availableMoney = teamService.getAvailableMoneyForBids();
+  const totalMoney = teamService.getTotalMoney();
 
   return (
     <div className="card border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -57,6 +58,9 @@ const MyBidsSummary = ({ marketData, offersVersion: _offersVersion, teamReady })
             : <ChevronDown className="w-4 h-4 text-gray-400" aria-hidden="true" />}
         </div>
         <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+          <span className="text-gray-600 dark:text-gray-400">
+            Saldo disponible: <span className="font-semibold text-blue-600 dark:text-blue-400">{formatNumberWithDots(totalMoney)}€</span>
+          </span>
           <span className="text-gray-600 dark:text-gray-400">
             Comprometido: <span className="font-semibold text-amber-600 dark:text-amber-400">{formatNumberWithDots(totalCommitted)}€</span>
           </span>

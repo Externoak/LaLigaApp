@@ -4,6 +4,16 @@ import { LogIn, Mail, Lock, ExternalLink, Chrome } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import authService from '../../services/authService';
 import updateService from '../../services/updateService';
+import * as pkce from '../../utils/pkce';
+
+// Debug logger for the interactive OAuth login. Off by default; enable by
+// building with REACT_APP_OAUTH_DEBUG=true to trace the flow in the console.
+const OAUTH_DEBUG = process.env.REACT_APP_OAUTH_DEBUG === 'true';
+const oauthLog = (...args) => {
+  if (!OAUTH_DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.log('%c[GoogleLogin]', 'color:#10b981;font-weight:bold', ...args);
+};
 
 // Enhanced Modal Component for Token Input with Validation
 const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
@@ -179,6 +189,9 @@ const Login = () => {
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [tokenInputValue, setTokenInputValue] = useState('');
 
+  // Whether the collapsible manual (DevTools) fallback guide is shown.
+  const [showManualGuide, setShowManualGuide] = useState(false);
+
   // Load saved credentials on component mount
   React.useEffect(() => {
     const savedCredentials = localStorage.getItem('laliga_saved_credentials');
@@ -227,7 +240,7 @@ const Login = () => {
     }
   };
 
-  const handleGoogleLogin = () => {
+  const handleOpenLaLigaWeb = () => {
     setLoading(true);
     setError(null);
 
@@ -278,6 +291,193 @@ const Login = () => {
     }
   };
 
+
+  const isElectronApp = typeof window !== 'undefined' && window.electronAPI !== undefined;
+  const canUseElectronOAuth = isElectronApp && typeof window.electronAPI.startOAuthLogin === 'function';
+
+  const getWebRedirectUri = () =>
+    process.env.REACT_APP_OAUTH_WEB_REDIRECT_URI ||
+    `${window.location.origin}/oauth-callback.html`;
+
+  // Drive the web popup OAuth flow: open the authorize URL and wait for the
+  // callback page to hand back the authorization code, then exchange it.
+  //
+  // Under Cross-Origin-Opener-Policy, once the popup navigates cross-origin to
+  // login.laliga.es the opener relationship is severed: `window.opener` in the
+  // callback becomes null and `popup.closed` is unreadable. So we DON'T rely on
+  // postMessage-from-opener or closed-polling — we listen on a same-origin
+  // BroadcastChannel (with a localStorage `storage` event as a fallback), both
+  // of which are unaffected by COOP.
+  const runWebOAuth = ({ authorizeUrl, redirectUri, state, verifier }) => {
+    return new Promise((resolve, reject) => {
+      oauthLog('opening popup for', authorizeUrl);
+      const popup = window.open(authorizeUrl, 'oauthLogin', 'width=520,height=720');
+      if (!popup) {
+        oauthLog('popup was blocked by the browser');
+        reject(new Error('El navegador bloqueó la ventana emergente. Permite las ventanas emergentes o usa el método manual.'));
+        return;
+      }
+
+      let done = false;
+      let channel = null;
+      try { channel = new BroadcastChannel('laliga-oauth'); } catch (e) { channel = null; }
+      oauthLog('popup opened; listening on', channel ? 'BroadcastChannel + storage + message' : 'storage + message (no BroadcastChannel)');
+
+      const cleanup = () => {
+        window.removeEventListener('message', onMessage);
+        window.removeEventListener('storage', onStorage);
+        if (channel) { try { channel.close(); } catch (e) { /* noop */ } }
+        clearTimeout(timeoutId);
+        try { localStorage.removeItem('oauth-callback-code'); } catch (e) { /* noop */ }
+      };
+
+      const complete = async (data) => {
+        if (done || !data) return;
+        done = true;
+        cleanup();
+        oauthLog('completing flow; code present:', !!data.code, 'state matches:', !state || data.state === state);
+        try {
+          if (state && data.state !== state) {
+            throw new Error('State mismatch en la respuesta OAuth');
+          }
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          if (!data.code) {
+            throw new Error('No se recibió el código de autorización');
+          }
+          oauthLog('exchanging authorization code for tokens...');
+          const tokens = await authService.exchangeCodeForTokens({
+            code: data.code,
+            codeVerifier: verifier,
+            redirectUri
+          });
+          oauthLog('token exchange OK; keys:', Object.keys(tokens || {}));
+          await login(tokens);
+          oauthLog('login() completed');
+          try { popup.close(); } catch (e) { /* noop */ }
+          resolve();
+        } catch (err) {
+          oauthLog('flow failed:', err.message);
+          reject(err);
+        }
+      };
+
+      // Same-origin window message (works when COOP is not severing the opener).
+      const onMessage = (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === 'oauth-callback') {
+          oauthLog('received via window.postMessage');
+          complete(event.data);
+        }
+      };
+      // BroadcastChannel message (COOP-proof primary path). Also carries the
+      // popup's own debug output so it surfaces in THIS window's console.
+      const onChannel = (event) => {
+        if (event.data?.type === 'oauth-debug') {
+          oauthLog('popup »', event.data.msg, event.data.extra || '');
+          return;
+        }
+        if (event.data?.type === 'oauth-callback') {
+          oauthLog('received via BroadcastChannel');
+          complete(event.data);
+        }
+      };
+      // localStorage fallback: fires in this window when the popup writes the key.
+      const onStorage = (event) => {
+        if (event.key !== 'oauth-callback-code' || !event.newValue) return;
+        oauthLog('received via localStorage storage event');
+        try { complete(JSON.parse(event.newValue)); } catch (e) { /* noop */ }
+      };
+
+      window.addEventListener('message', onMessage);
+      window.addEventListener('storage', onStorage);
+      if (channel) channel.addEventListener('message', onChannel);
+
+      // Safety timeout to avoid dangling listeners on an abandoned popup.
+      const timeoutId = setTimeout(() => {
+        if (done) return;
+        done = true;
+        cleanup();
+        oauthLog('timed out after 3 min with no code received — popup likely stalled on a B2C error (check the popup window)');
+        try { popup.close(); } catch (e) { /* noop */ }
+        reject(new Error('Tiempo de espera agotado. Si iniciaste sesión y no volviste automáticamente, usa el método manual.'));
+      }, 3 * 60 * 1000);
+    });
+  };
+
+  // One-click automated login (replaces the manual DevTools token capture).
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      oauthLog('start', { isElectronApp, canUseElectronOAuth });
+
+      // An Electron shell without the OAuth IPC (older build) can't run the
+      // in-app flow; the browser popup path won't work there either, so guide
+      // the user to update or use the manual method.
+      if (isElectronApp && !canUseElectronOAuth) {
+        throw new Error('Actualiza la aplicación para usar el inicio de sesión automático, o usa el método manual.');
+      }
+
+      const verifier = pkce.generateVerifier();
+      const challenge = await pkce.challengeFromVerifier(verifier);
+      const state = pkce.randomState();
+      const redirectUri = canUseElectronOAuth
+        ? authService.AUTH_CONFIG.REDIRECT_URI
+        : getWebRedirectUri();
+      const authorizeUrl = authService.buildAuthorizeUrl({
+        redirectUri,
+        codeChallenge: challenge,
+        state
+      });
+      oauthLog('redirectUri:', redirectUri);
+      oauthLog('authorizeUrl (open this manually to see any B2C error):', authorizeUrl);
+
+      if (canUseElectronOAuth) {
+        oauthLog('using Electron in-app login window');
+        const result = await window.electronAPI.startOAuthLogin({ authorizeUrl, redirectUri, state });
+        // Don't log the raw authorization code — report only its presence/outcome.
+        oauthLog('electron result:', { success: result?.success, cancelled: result?.cancelled, hasCode: !!result?.code, error: result?.error });
+        if (result?.cancelled) {
+          oauthLog('user cancelled the login window');
+          setLoading(false);
+          return;
+        }
+        if (!result?.success || !result.code) {
+          throw new Error(result?.error || 'No se pudo completar el inicio de sesión');
+        }
+        oauthLog('exchanging authorization code for tokens...');
+        const tokens = await authService.exchangeCodeForTokens({
+          code: result.code,
+          codeVerifier: verifier,
+          redirectUri
+        });
+        oauthLog('token exchange OK; keys:', Object.keys(tokens || {}));
+        await login(tokens);
+        oauthLog('login() completed — component will unmount');
+        // On success the auth state flips and this component unmounts.
+      } else if (process.env.REACT_APP_OAUTH_WEB_REDIRECT_URI) {
+        // Only attempt the browser popup when an operator has explicitly
+        // configured a redirect URI that IS registered in LaLiga's B2C tenant.
+        oauthLog('using web popup login (custom redirect configured)');
+        await runWebOAuth({ authorizeUrl, redirectUri, state, verifier });
+      } else {
+        // Plain web: LaLiga's B2C only redirects to its own registered reply
+        // URLs (e.g. miliga.laliga.com), never to our origin, so the popup can
+        // never recover the code. Send the user to the manual method instead.
+        oauthLog('web without a registered redirect — automated login is not possible here; showing manual method');
+        setShowManualGuide(true);
+        throw new Error('El inicio de sesión automático con Google solo funciona en la app de escritorio. En el navegador, usa el método manual (Pegar Token) de abajo.');
+      }
+    } catch (err) {
+      oauthLog('handleGoogleLogin error:', err.message);
+      setError(err.message || 'Error al iniciar sesión con Google');
+      setShowManualGuide(true);
+      setLoading(false);
+    }
+  };
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && loginMethod === 'email') {
@@ -368,7 +568,7 @@ const Login = () => {
               }`}
             >
               <Chrome className="w-4 h-4 inline mr-2" />
-              Token/Google
+              Google
             </button>
           </motion.div>
 
@@ -390,6 +590,7 @@ const Login = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     onKeyPress={handleKeyPress}
+                    autoComplete="username"
                     className="w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-400 focus:bg-white transition-all duration-300 text-gray-700 placeholder-gray-400"
                     placeholder="Introduce tu email"
                     disabled={loading}
@@ -406,6 +607,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onKeyPress={handleKeyPress}
+                    autoComplete="current-password"
                     className="w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-400 focus:bg-white transition-all duration-300 text-gray-700 placeholder-gray-400"
                     placeholder="Introduce tu contraseña"
                     disabled={loading}
@@ -458,6 +660,47 @@ const Login = () => {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
             >
+              {/* Primary: one-click automated login (desktop app only — a web
+                  browser cannot capture the cross-origin B2C tokens). */}
+              {canUseElectronOAuth && (
+              <>
+              <motion.button
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center space-x-3 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none"
+                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: loading ? 1 : 1.02 }}
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                    <span>Conectando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Chrome className="w-5 h-5" />
+                    <span>Iniciar sesión con Google</span>
+                  </>
+                )}
+              </motion.button>
+
+              <p className="text-center text-sm text-gray-500">
+                Se abrirá la ventana de inicio de sesión de La Liga (incluido Google). Al terminar, volverás automáticamente.
+              </p>
+
+              {/* Manual fallback toggle */}
+              <button
+                type="button"
+                onClick={() => setShowManualGuide((v) => !v)}
+                className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                {showManualGuide ? 'Ocultar método manual' : '¿Problemas? Usar método manual'}
+              </button>
+              </>
+              )}
+
+              {(showManualGuide || !canUseElectronOAuth) && (
+              <>
               {/* Step-by-step guide */}
               <motion.div
                 className="bg-gradient-to-br from-blue-50/80 via-indigo-50/80 to-purple-50/80 backdrop-blur-sm border border-blue-200/60 rounded-3xl p-8 mb-6 shadow-lg hover:shadow-xl transition-all duration-300"
@@ -581,7 +824,7 @@ const Login = () => {
               </motion.div>
 
               <motion.button
-                onClick={handleGoogleLogin}
+                onClick={handleOpenLaLigaWeb}
                 disabled={loading}
                 className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-300 disabled:to-gray-400 text-white font-bold py-4 px-6 rounded-2xl flex items-center justify-center space-x-3 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:transform-none mb-4"
                 whileTap={{ scale: 0.98 }}
@@ -601,6 +844,8 @@ const Login = () => {
                 <Chrome className="w-5 h-5" />
                 <span>Pegar Token</span>
               </motion.button>
+              </>
+              )}
             </motion.div>
           )}
           </AnimatePresence>

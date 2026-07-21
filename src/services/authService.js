@@ -6,11 +6,21 @@ import { useAuthStore } from '../stores/authStore';
 import { parseJwtPayload } from '../utils/helpers';
 
 const AUTH_CONFIG = {
-  CLIENT_ID: process.env.REACT_APP_LALIGA_CLIENT_ID || "6457fa17-1224-416a-b21a-ee6ce76e9bc0", // Google OAuth client ID
+  CLIENT_ID: process.env.REACT_APP_LALIGA_CLIENT_ID || "6457fa17-1224-416a-b21a-ee6ce76e9bc0", // Client ID de La Liga B2C (flujo OAuth principal y refresh)
   EMAIL_CLIENT_ID: process.env.REACT_APP_LALIGA_EMAIL_CLIENT_ID || "af88bcff-1157-40a0-b579-030728aacf0b", // Email/password client ID
+  // Client used for the interactive auth-code + PKCE (Google) flow. Must be a
+  // client that has the native redirect `authredirect://com.lfp.laligafantasy`
+  // registered — NOT the web client 6457fa17 (which only allows miliga.laliga.com).
+  // Defaults to the email/native client; override with the mobile app's client_id.
+  OAUTH_CLIENT_ID: process.env.REACT_APP_OAUTH_CLIENT_ID || process.env.REACT_APP_LALIGA_EMAIL_CLIENT_ID || "af88bcff-1157-40a0-b579-030728aacf0b",
   BASE_URL: process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token",
   REFRESH_TOKEN_ENDPOINT: (process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token") + "?p=B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
+  // Authorize endpoint derived from the token endpoint (…/oauth2/v2.0/token -> …/authorize).
+  AUTHORIZE_ENDPOINT: (process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token").replace(/\/token(\?.*)?$/, "/authorize"),
   POLICY: "B2C_1A_ResourceOwnerv2",
+  // Sign-in policy used by the interactive (Google/social) auth-code flow. Same
+  // policy that issues refresh tokens and that the manual token guide targets.
+  SIGNIN_POLICY: "B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
   REDIRECT_URI: "authredirect://com.lfp.laligafantasy",
   WEB_REDIRECT_URI: window.location.origin,
   SCOPE_TEMPLATE: (clientId) => `openid ${clientId} offline_access`
@@ -61,14 +71,16 @@ export async function getToken(email, password) {
  * @param {string} refreshToken - The refresh token
  * @returns {Promise<Object|null>} New token response or null if failed
  */
-export async function refreshToken(refreshToken) {
+export async function refreshToken(refreshToken, clientId) {
   const tokenEndpoint = AUTH_CONFIG.REFRESH_TOKEN_ENDPOINT;
-  
-  // Prepare the body parameters exactly as in bot_original
+
+  // Prepare the body parameters exactly as in bot_original. The refresh must
+  // use the same client that issued the tokens (the interactive/Google flow
+  // uses OAUTH_CLIENT_ID); fall back to the default web client otherwise.
   const params = new URLSearchParams({
     'grant_type': 'refresh_token',
     'refresh_token': refreshToken,
-    'client_id': AUTH_CONFIG.CLIENT_ID, // Use Google OAuth client ID for refresh
+    'client_id': clientId || AUTH_CONFIG.CLIENT_ID,
     'scope': 'openid offline_access'
   });
 
@@ -103,6 +115,80 @@ export async function refreshToken(refreshToken) {
   } catch (error) {
     throw error;
   }
+}
+
+/**
+ * Build the B2C /authorize URL for the interactive Authorization Code + PKCE
+ * flow (used by the automated Google/social login).
+ *
+ * @param {Object} opts
+ * @param {string} opts.redirectUri - Registered redirect URI to return to.
+ * @param {string} opts.codeChallenge - PKCE S256 challenge (base64url).
+ * @param {string} opts.state - Opaque CSRF state, echoed back on the redirect.
+ * @param {string} [opts.nonce] - OIDC nonce (defaults to state).
+ * @returns {string} Full authorize URL.
+ */
+export function buildAuthorizeUrl({ redirectUri, codeChallenge, state, nonce }) {
+  // Note: we deliberately do NOT send `prompt=login`. This B2C custom policy
+  // can reject it, and omitting it lets an existing session complete via SSO.
+  const params = new URLSearchParams({
+    p: AUTH_CONFIG.SIGNIN_POLICY,
+    client_id: AUTH_CONFIG.OAUTH_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    scope: 'openid offline_access',
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    state,
+    nonce: nonce || state
+  });
+
+  return `${AUTH_CONFIG.AUTHORIZE_ENDPOINT}?${params.toString()}`;
+}
+
+/**
+ * Exchange an authorization code for tokens (Authorization Code + PKCE).
+ * Returns the raw token JSON ({ access_token, id_token, refresh_token, … }),
+ * the same shape `buildLoginPayload`/`authStore.login` already consume.
+ *
+ * @param {Object} opts
+ * @param {string} opts.code - Authorization code from the redirect.
+ * @param {string} opts.codeVerifier - PKCE verifier matching the challenge.
+ * @param {string} opts.redirectUri - Must match the authorize request.
+ * @returns {Promise<Object>} Token response.
+ */
+export async function exchangeCodeForTokens({ code, codeVerifier, redirectUri }) {
+  const tokenUrl = `${AUTH_CONFIG.BASE_URL}?p=${AUTH_CONFIG.SIGNIN_POLICY}`;
+
+  const params = new URLSearchParams({
+    grant_type: 'authorization_code',
+    client_id: AUTH_CONFIG.OAUTH_CLIENT_ID,
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+    scope: 'openid offline_access'
+  });
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: params.toString()
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error_description || result.error || 'Authorization code exchange failed');
+  }
+
+  if (!result.access_token && !result.id_token) {
+    throw new Error('La respuesta de token no contiene access_token ni id_token');
+  }
+
+  // Tag the tokens with the issuing client so refresh uses the same one.
+  return { ...result, client_id: AUTH_CONFIG.OAUTH_CLIENT_ID };
 }
 
 /**
@@ -235,12 +321,18 @@ export function buildLoginPayload(tokenOrData) {
     };
   } else {
     tokens = {
-      access_token: tokenOrData.access_token,
+      // LaLiga's B2C returns only an id_token for the `openid` scope, and the
+      // API uses the id_token as the bearer (see refreshToken's id_token||...).
+      // Fall back to it so token responses without an access_token still auth.
+      access_token: tokenOrData.access_token || tokenOrData.id_token,
       id_token: tokenOrData.id_token,
       refresh_token: tokenOrData.refresh_token,
       token_type: tokenOrData.token_type || 'Bearer',
-      expires_in: tokenOrData.expires_in || 86400,
+      expires_in: tokenOrData.expires_in || tokenOrData.id_token_expires_in || 86400,
       expires_on: calculateTokenExpiration(tokenOrData),
+      // Remember which B2C client issued these tokens so refresh uses the same
+      // one (the interactive/Google flow uses OAUTH_CLIENT_ID, not CLIENT_ID).
+      client_id: tokenOrData.client_id,
     };
   }
 
@@ -280,6 +372,8 @@ export async function fetchCurrentUserProfile(jwtUser) {
 const authService = {
   getToken,
   refreshToken,
+  buildAuthorizeUrl,
+  exchangeCodeForTokens,
   decodeJWT,
   extractUserFromTokens,
   isTokenExpired,
