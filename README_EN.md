@@ -1,6 +1,6 @@
 ﻿# LaLiga Fantasy App
 
-[![Version](https://img.shields.io/badge/version-3.5.3-green.svg)](https://github.com/Externoak/LaLigaApp)
+[![Version](https://img.shields.io/badge/version-3.5.4-green.svg)](https://github.com/Externoak/LaLigaApp)
 [![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 [![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#platforms)
