@@ -7,6 +7,7 @@ import teamService from '../../services/teamService';
 import { invalidateAfterBid } from '../../utils/cacheInvalidation';
 import useModalFlow from '../../hooks/useModalFlow';
 import { createMoneyInputHandler } from '../../utils/moneyInput';
+import { getMinimumBid } from '../../utils/bidHelpers';
 
 /**
  * useBidFlow — encapsulates bid modal state + submission for the Market.
@@ -34,7 +35,7 @@ export function useBidFlow({ leagueId, queryClient, onAfterBid }) {
     if (modifying && teamService.hasOffer(item.playerMaster.id)) {
       setBidAmount(teamService.getOfferAmount(item.playerMaster.id).toString());
     } else {
-      setBidAmount(item.playerMaster.marketValue.toString());
+      setBidAmount(getMinimumBid(item).toString());
     }
     flow.open();
   }, [flow]);
@@ -52,6 +53,12 @@ export function useBidFlow({ leagueId, queryClient, onAfterBid }) {
     const amount = parseInt(bidAmount, 10);
     if (amount <= 0 || isNaN(amount)) {
       toast.error('Introduce una cantidad válida');
+      return;
+    }
+
+    const minimumBid = getMinimumBid(bidPlayerData);
+    if (amount < minimumBid) {
+      toast.error(`La oferta mínima es ${formatCurrency(minimumBid)}`);
       return;
     }
 
@@ -138,7 +145,7 @@ export const BidModal = ({
 
   const handleBidAmountChange = createMoneyInputHandler(setBidAmount);
 
-  const minimumBid = Math.max(playerData.marketValue, player.salePrice);
+  const minimumBid = getMinimumBid(player);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="p-6 mx-4">
@@ -184,7 +191,7 @@ export const BidModal = ({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Precio actual</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Precio de venta</p>
                 <p className="text-sm font-bold text-primary-600 dark:text-primary-400 break-all">
                   {formatNumberWithDots(player.salePrice) + (player.salePrice ? '€' : '0€')}
                 </p>
