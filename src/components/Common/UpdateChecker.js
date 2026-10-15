@@ -11,7 +11,10 @@ import {
 import updateService from '../../services/updateService';
 import toast from 'react-hot-toast';
 
-const UpdateChecker = () => {
+const DEFAULT_BUTTON_CLASS = 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300';
+
+// buttonClassName: colores del botón según el fondo (el login va sobre verde).
+const UpdateChecker = ({ buttonClassName = DEFAULT_BUTTON_CLASS }) => {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
@@ -263,7 +266,7 @@ const UpdateChecker = () => {
         type="button"
         onClick={() => checkForUpdates(true)}
         disabled={isChecking}
-        className="relative p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors"
+        className={`relative p-2 transition-colors ${buttonClassName}`}
         title="Buscar actualizaciones"
         aria-label="Buscar actualizaciones"
       >

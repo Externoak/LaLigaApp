@@ -309,7 +309,13 @@ class UpdateService {
     startPeriodicUpdateChecks(intervalHours = 6) {
         const intervalMs = intervalHours * 60 * 60 * 1000;
 
-        setInterval(async () => {
+        // Idempotente: UpdateChecker se monta en el login y luego en el Layout;
+        // sin esto cada montaje acumulaba otro intervalo.
+        if (this.periodicCheckInterval) {
+            clearInterval(this.periodicCheckInterval);
+        }
+
+        this.periodicCheckInterval = setInterval(async () => {
             try {
                 const updateInfo = await this.checkForUpdates();
                 if (updateInfo.updateAvailable) {
