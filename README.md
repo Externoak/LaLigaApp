@@ -1,4 +1,4 @@
-﻿# LaLiga Fantasy App
+# LaLiga Fantasy App
 
 [![Version](https://img.shields.io/badge/version-3.5.5-green.svg)](https://github.com/Externoak/LaLigaApp)
 [![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
