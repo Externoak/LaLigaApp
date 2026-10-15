@@ -4,6 +4,7 @@ import { LogIn, Mail, Lock, ExternalLink, Chrome, Smartphone } from 'lucide-reac
 import { useAuthStore } from '../../stores/authStore';
 import authService from '../../services/authService';
 import updateService from '../../services/updateService';
+import UpdateChecker from '../Common/UpdateChecker';
 import * as pkce from '../../utils/pkce';
 
 // Debug logger for the interactive OAuth login. Off by default; enable by
@@ -208,6 +209,16 @@ const Login = () => {
 
   const login = useAuthStore((state) => state.login);
 
+  // Un fallo de login puede deberse a un cambio en LaLiga ya resuelto en una
+  // versión nueva: re-comprobar y reabrir el modal de UpdateChecker (escucha
+  // 'updateAvailable') aunque se hubiera cerrado con "Más tarde".
+  const notifyUpdateIfAvailable = async () => {
+    const info = await updateService.checkForUpdates();
+    if (info.updateAvailable) {
+      window.dispatchEvent(new CustomEvent('updateAvailable', { detail: info }));
+    }
+  };
+
   const handleEmailLogin = async () => {
     if (!email || !password) {
       setError('Ingresa tu email y contraseña');
@@ -240,6 +251,7 @@ const Login = () => {
       if (error.code === 'ROPC_UNAVAILABLE') {
         setLoginMethod('token');
       }
+      notifyUpdateIfAvailable();
     } finally {
       setLoading(false);
     }
@@ -290,6 +302,7 @@ const Login = () => {
       }
     } catch (error) {
       setError(`Token inválido: ${error.message || 'Formato incorrecto'}`);
+      notifyUpdateIfAvailable();
     } finally {
       setLoading(false);
       setTokenInputValue(''); // Clear the input field
@@ -342,6 +355,7 @@ const Login = () => {
       setError(err.message || 'Error al iniciar sesión con Google');
       setShowManualGuide(true);
       setLoading(false);
+      notifyUpdateIfAvailable();
     }
   };
 
@@ -362,6 +376,12 @@ const Login = () => {
       <div className="absolute top-1/4 left-1/4 w-32 h-32 bg-white/5 rounded-full blur-xl animate-pulse"></div>
       <div className="absolute bottom-1/4 right-1/4 w-24 h-24 bg-white/5 rounded-full blur-xl animate-pulse" style={{animationDelay: '2s'}}></div>
       <div className="absolute top-1/2 left-1/6 w-16 h-16 bg-white/5 rounded-full blur-xl animate-pulse" style={{animationDelay: '4s'}}></div>
+
+      {/* Actualizaciones también sin sesión: si un cambio de LaLiga rompe el
+          login, la versión que lo arregla debe poder instalarse desde aquí. */}
+      <div className="absolute top-4 right-4 z-20">
+        <UpdateChecker buttonClassName="text-white/70 hover:text-white" />
+      </div>
 
       <motion.div
         className="w-full max-w-2xl relative z-10"
