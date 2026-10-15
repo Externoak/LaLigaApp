@@ -17,14 +17,48 @@ const AUTH_CONFIG = {
   REFRESH_TOKEN_ENDPOINT: (process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token") + "?p=B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
   // Authorize endpoint derived from the token endpoint (…/oauth2/v2.0/token -> …/authorize).
   AUTHORIZE_ENDPOINT: (process.env.REACT_APP_AUTH_BASE_URL || "https://login.laliga.es/laligadspprob2c.onmicrosoft.com/oauth2/v2.0/token").replace(/\/token(\?.*)?$/, "/authorize"),
-  POLICY: "B2C_1A_ResourceOwnerv2",
+  // ROPC (email/password) policy. LaLiga retiró B2C_1A_ResourceOwnerv2 el
+  // 2026-10-15 (404 HTML); getToken reintenta contra SIGNIN_POLICY.
+  POLICY: process.env.REACT_APP_LALIGA_ROPC_POLICY || "B2C_1A_ResourceOwnerv2",
   // Sign-in policy used by the interactive (Google/social) auth-code flow. Same
   // policy that issues refresh tokens and that the manual token guide targets.
   SIGNIN_POLICY: "B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
   REDIRECT_URI: "authredirect://com.lfp.laligafantasy",
-  WEB_REDIRECT_URI: window.location.origin,
   SCOPE_TEMPLATE: (clientId) => `openid ${clientId} offline_access`
 };
+
+const ROPC_UNAVAILABLE_MESSAGE = 'LaLiga ha desactivado el inicio de sesión directo con email y contraseña. Usa la pestaña «LaLiga / Google».';
+
+/**
+ * Parse a B2C token endpoint response. B2C answers removed policies with an
+ * HTML/text page ("The resource you are looking for has been removed..."), so
+ * a bare response.json() would surface an unreadable SyntaxError.
+ * @param {Response} response
+ * @returns {Promise<Object>} Parsed JSON body
+ */
+async function readTokenResponse(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    const error = new Error(`Servicio de autenticación de LaLiga no disponible (HTTP ${response.status})`);
+    error.status = response.status;
+    error.nonJson = true;
+    throw error;
+  }
+}
+
+async function requestPasswordToken(policy, data) {
+  const response = await fetch(`${AUTH_CONFIG.BASE_URL}?p=${policy}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams(data),
+  });
+  const result = await readTokenResponse(response);
+  return { response, result };
+}
 
 /**
  * Get authentication token using email and password
@@ -33,8 +67,6 @@ const AUTH_CONFIG = {
  * @returns {Promise<Object|null>} Token response or null if failed
  */
 export async function getToken(email, password) {
-  const tokenUrl = `${AUTH_CONFIG.BASE_URL}?p=${AUTH_CONFIG.POLICY}`;
-
   const data = {
     grant_type: "password",
     client_id: AUTH_CONFIG.EMAIL_CLIENT_ID, // Use email client ID for password flow
@@ -45,25 +77,38 @@ export async function getToken(email, password) {
     response_type: "id_token"
   };
 
+  let attempt;
   try {
-    const response = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams(data),
-    });
+    attempt = await requestPasswordToken(AUTH_CONFIG.POLICY, data);
+  } catch (error) {
+    if (!error.nonJson) throw error;
+  }
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.error_description || result.error || 'Authentication failed');
+  // Policy gone (404 / non-JSON body): retry once against the live sign-in policy.
+  if (!attempt || attempt.response.status === 404) {
+    try {
+      attempt = await requestPasswordToken(AUTH_CONFIG.SIGNIN_POLICY, data);
+    } catch (error) {
+      if (!error.nonJson) throw error;
+      throw Object.assign(new Error(ROPC_UNAVAILABLE_MESSAGE), { code: 'ROPC_UNAVAILABLE' });
     }
 
-    return result;
-  } catch (error) {
-    throw error;
+    if (!attempt.response.ok) {
+      const description = attempt.result.error_description || attempt.result.error || '';
+      // AADB2C90225 = usuario o contraseña incorrectos: la política sí admite ROPC.
+      if (/AADB2C90225/.test(description)) {
+        throw new Error(description);
+      }
+      throw Object.assign(new Error(ROPC_UNAVAILABLE_MESSAGE), { code: 'ROPC_UNAVAILABLE', details: description });
+    }
   }
+
+  const { response, result } = attempt;
+  if (!response.ok) {
+    throw new Error(result.error_description || result.error || 'Authentication failed');
+  }
+
+  return result;
 }
 
 /**
@@ -105,7 +150,7 @@ export async function refreshToken(refreshToken, clientId) {
       throw new Error(`Token refresh failed: ${response.status} - ${errorText}`);
     }
 
-    const result = await response.json();
+    const result = await readTokenResponse(response);
 
     if (!result.id_token) {
       throw new Error('Token refresh failed - no id_token received');
@@ -177,7 +222,7 @@ export async function exchangeCodeForTokens({ code, codeVerifier, redirectUri })
     body: params.toString()
   });
 
-  const result = await response.json();
+  const result = await readTokenResponse(response);
 
   if (!response.ok) {
     throw new Error(result.error_description || result.error || 'Authorization code exchange failed');

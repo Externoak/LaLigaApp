@@ -1,4 +1,16 @@
-import { buildAuthorizeUrl, exchangeCodeForTokens } from './authService';
+import { buildAuthorizeUrl, exchangeCodeForTokens, getToken } from './authService';
+
+const jsonResponse = (status, body) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: async () => JSON.stringify(body)
+});
+
+const REMOVED_POLICY_PAGE = {
+  ok: false,
+  status: 404,
+  text: async () => 'The resource you are looking for has been removed, had its name changed, or is temporarily unavailable.'
+};
 
 describe('buildAuthorizeUrl', () => {
   const url = buildAuthorizeUrl({
@@ -37,10 +49,7 @@ describe('exchangeCodeForTokens', () => {
       refresh_token: 'c',
       token_type: 'Bearer'
     };
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => tokenResponse
-    });
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(200, tokenResponse));
 
     const result = await exchangeCodeForTokens({
       code: 'the-code',
@@ -60,13 +69,56 @@ describe('exchangeCodeForTokens', () => {
   });
 
   it('throws with the B2C error description on failure', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ error: 'invalid_grant', error_description: 'bad code' })
-    });
+    global.fetch = jest.fn().mockResolvedValue(
+      jsonResponse(400, { error: 'invalid_grant', error_description: 'bad code' })
+    );
 
     await expect(
       exchangeCodeForTokens({ code: 'x', codeVerifier: 'y', redirectUri: 'z' })
     ).rejects.toThrow('bad code');
+  });
+});
+
+describe('getToken', () => {
+  afterEach(() => {
+    global.fetch.mockRestore?.();
+  });
+
+  it('returns the token JSON from the ROPC policy', async () => {
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(200, { id_token: 'b' }));
+
+    await expect(getToken('a@b.c', 'pw')).resolves.toEqual({ id_token: 'b' });
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(global.fetch.mock.calls[0][0]).toContain('p=B2C_1A_ResourceOwnerv2');
+  });
+
+  it('retries against the sign-in policy when the ROPC policy is gone', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(REMOVED_POLICY_PAGE)
+      .mockResolvedValueOnce(jsonResponse(200, { id_token: 'b' }));
+
+    await expect(getToken('a@b.c', 'pw')).resolves.toEqual({ id_token: 'b' });
+    expect(global.fetch.mock.calls[1][0]).toContain('p=B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN');
+  });
+
+  it('reports wrong credentials from the sign-in policy as-is', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(REMOVED_POLICY_PAGE)
+      .mockResolvedValueOnce(jsonResponse(400, {
+        error: 'invalid_grant',
+        error_description: 'AADB2C90225: The username or password provided in the request are invalid.'
+      }));
+
+    await expect(getToken('a@b.c', 'pw')).rejects.toThrow('AADB2C90225');
+  });
+
+  it('flags ROPC_UNAVAILABLE instead of a JSON SyntaxError when no policy accepts passwords', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(REMOVED_POLICY_PAGE)
+      .mockResolvedValueOnce(jsonResponse(400, { error: 'unsupported_grant_type' }));
+
+    const error = await getToken('a@b.c', 'pw').catch((e) => e);
+    expect(error).not.toBeInstanceOf(SyntaxError);
+    expect(error.code).toBe('ROPC_UNAVAILABLE');
   });
 });

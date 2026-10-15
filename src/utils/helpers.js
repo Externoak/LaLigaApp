@@ -81,19 +81,21 @@ export const getPositionEmoji = (positionId) => {
         1: '🧤', // Portero
         2: '🛡️', // Defensa
         3: '⚡', // Centrocampista
-        4: '⚽'  // Delantero
+        4: '⚽', // Delantero
+        5: '📋'  // Entrenador
     };
     return emojis[positionId] || '👤';
 };
 
-// Obtener nombre de posición. El fallback se muestra de verdad (positionId 5
-// = entrenador no está en el mapa), así que cada vista puede pasar el suyo.
+// Obtener nombre de posición. El fallback se muestra para ids desconocidos,
+// así que cada vista puede pasar el suyo.
 export const getPositionName = (positionId, fallback = 'N/A') => {
     const names = {
         1: 'Portero',
         2: 'Defensa',
         3: 'Centrocampista',
-        4: 'Delantero'
+        4: 'Delantero',
+        5: 'Entrenador'
     };
     return names[positionId] || fallback;
 };
@@ -104,7 +106,8 @@ export const getPositionColor = (positionId, fallback = 'bg-gray-100 text-gray-8
         1: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
         2: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
         3: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-        4: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+        4: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
+        5: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
     };
     return colors[positionId] || fallback;
 };

@@ -4,6 +4,20 @@ import authService from '../services/authService';
 import tokenPersistenceService from '../services/tokenPersistence';
 import tokenStorage from '../services/tokenStorage';
 
+// Versiones anteriores registraban /sw.js para interceptar tokens (ya no
+// existe): darlo de baja en instalaciones que lo tengan todavía.
+const unregisterLegacyServiceWorker = () => {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistrations()
+    .then((registrations) => registrations
+      .filter((registration) => {
+        const worker = registration.active || registration.waiting || registration.installing;
+        return worker?.scriptURL?.endsWith('/sw.js');
+      })
+      .forEach((registration) => registration.unregister()))
+    .catch(() => { /* noop */ });
+};
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -29,8 +43,7 @@ export const useAuthStore = create(
       // Initialize auth from localStorage and persistent storage
       initializeAuth: async () => {
 
-        // Set up service worker token listener first
-        get().initializeServiceWorkerListener();
+        unregisterLegacyServiceWorker();
 
         // First, try to recover from persistent storage if localStorage is empty or expired
         await get().tryRecoverFromPersistentStorage();
@@ -421,114 +434,6 @@ export const useAuthStore = create(
         });
       },
 
-      // Check if user is fully authenticated
-      isFullyAuthenticated: () => {
-        const state = get();
-        return state.isAuthenticated && state.hasSelectedLeague;
-      },
-
-      // Initialize service worker token listener
-      initializeServiceWorkerListener: () => {
-
-        // Register the token interceptor service worker first
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js', {
-            scope: '/',
-            updateViaCache: 'none'  // Force update without cache
-          })
-            .then(async (registration) => {
-
-              // Force update to get the latest version
-              await registration.update();
-
-              // If there's a waiting worker, activate it immediately
-              if (registration.waiting) {
-                registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-              }
-            })
-            .catch(() => {
-              // Service worker registration failed - silently handle
-            });
-        }
-
-        // Listen for service worker messages
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.addEventListener('message', (event) => {
-            if (event.data?.type === 'LALIGA_TOKENS_CAPTURED') {
-              get().handleCapturedTokens(event.data.tokens);
-            }
-          });
-        }
-
-        // Listen for broadcast channel messages
-        if ('BroadcastChannel' in window) {
-          const channel = new BroadcastChannel('laliga-tokens');
-          channel.addEventListener('message', (event) => {
-            if (event.data?.type === 'LALIGA_TOKENS_CAPTURED') {
-              get().handleCapturedTokens(event.data.tokens);
-            }
-          });
-        }
-
-        // Also listen for window messages (from token extractor)
-        window.addEventListener('message', (event) => {
-          // Only accept token messages from our own origin (interceptor + oauth callback run same-origin)
-          if (event.origin !== window.location.origin) {
-            return;
-          }
-          if (event.data?.type === 'LALIGA_TOKENS_CAPTURED') {
-            get().handleCapturedTokens(event.data.tokens);
-          }
-        });
-      },
-
-      // Handle captured tokens from service worker or other sources
-      handleCapturedTokens: async (tokens) => {
-
-        // Check if we already have valid tokens before processing new ones
-        const currentState = get();
-        if (currentState.isAuthenticated && currentState.tokens) {
-          const isCurrentExpired = authService.isTokenExpired(currentState.tokens);
-          if (!isCurrentExpired) {
-            return;
-          }
-        }
-
-        try {
-          // Validate tokens (prioritize id_token like the bot)
-          if (!tokens.id_token && !tokens.access_token) {
-            return;
-          }
-
-          // Skip test tokens from service worker tests
-          if (tokens.id_token?.startsWith('test_') ||
-              tokens.access_token?.startsWith('test_') ||
-              tokens.refresh_token?.startsWith('test_')) {
-            return;
-          }
-
-          // Use the existing login method to process the tokens
-          await get().login(tokens);
-
-          // Auth state updated successfully
-        } catch (error) {
-          // Failed to process captured tokens
-        }
-      },
-
-      // Test function to simulate receiving tokens (for debugging)
-      testTokenCapture: (testTokens) => {
-        const sampleTokens = testTokens || {
-          id_token: "test_id_token_123",
-          access_token: "test_access_token_123",
-          refresh_token: "test_refresh_token_123",
-          token_type: "Bearer",
-          expires_in: 3600,
-          id_token_expires_in: 3600
-        };
-        get().handleCapturedTokens(sampleTokens);
-      },
-
       // Clear all stored tokens and reset auth state
       clearAllTokens: async () => {
         // Stop periodic refresh and cancel any in-flight refresh
@@ -553,16 +458,6 @@ export const useAuthStore = create(
           inflightRefreshAbort: null,
         });
 
-      },
-
-      // Debug method to check persistent storage status
-      getPersistentStorageInfo: async () => {
-        try {
-          const info = await tokenPersistenceService.getStorageInfo();
-          return info;
-        } catch (error) {
-          return { available: false, error: error.message };
-        }
       }
     }),
     {

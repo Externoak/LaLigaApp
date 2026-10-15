@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Home, Trophy, ShoppingCart, Users, Calendar, Search, X, Moon, Sun,
-  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug, FileText, Edit3,
+  Activity, LogOut, Shield, User, Target, RefreshCw, Clock, Bug, FileText, Edit3, Smartphone,
 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -13,6 +13,7 @@ import ApiStatus from '../Common/ApiStatus';
 import SearchResults from '../Common/SearchResults';
 import UpdateChecker from '../Common/UpdateChecker';
 import ChangelogModal from '../Common/ChangelogModal';
+import PairDeviceModal from './PairDeviceModal';
 import updateService from '../../services/updateService';
 import { sanitizeSearchTerm } from '../../utils/validation';
 import { setImageFallback, getPositionName, extractArray, formatCurrencyCompact as formatCurrency } from '../../utils/helpers';
@@ -131,7 +132,7 @@ const SidebarUser = React.memo(function SidebarUser({ user, onRefresh }) {
   );
 });
 
-const SidebarFooter = React.memo(function SidebarFooter({ isAuthenticated, onLogout, onOpenChangelog, displayServerLink }) {
+const SidebarFooter = React.memo(function SidebarFooter({ isAuthenticated, isElectron, onLogout, onOpenChangelog, onOpenPairDevice, displayServerLink }) {
   return (
     <div className="p-3 border-t border-gray-200 dark:border-dark-border space-y-2">
       {!isAuthenticated ? (
@@ -144,6 +145,15 @@ const SidebarFooter = React.memo(function SidebarFooter({ isAuthenticated, onLog
           <LogOut className="w-5 h-5" />
           <span className="font-medium">Cerrar Sesión</span>
         </button>
+      )}
+      {/* Solo en el PC: en el móvil (mismo menú lateral) no tiene sentido. */}
+      {isAuthenticated && displayServerLink && (
+        <div className={isElectron ? '' : 'hidden lg:block'}>
+          <button onClick={onOpenPairDevice} className={`${NAV_BASE} w-full hover:bg-primary-50 dark:hover:bg-primary-900/20 text-primary-600 dark:text-primary-400`}>
+            <Smartphone className="w-5 h-5" />
+            <span className="font-medium">Conectar móvil</span>
+          </button>
+        </div>
       )}
       <div className="mt-2 px-3 py-2 border-t border-gray-200 dark:border-gray-700">
         <div className="text-[10px] text-gray-400 dark:text-gray-500 text-center space-y-0.5 leading-tight">
@@ -474,6 +484,7 @@ const Layout = ({ children }) => {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isElectron, setIsElectron] = useState(false);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+  const [isPairDeviceOpen, setIsPairDeviceOpen] = useState(false);
   const searchRef = useRef(null);
   const searchInputRef = useRef(null);
 
@@ -597,6 +608,8 @@ const Layout = ({ children }) => {
   }, [navigate, setSearchQuery]);
   const openChangelog = useCallback(() => setIsChangelogOpen(true), []);
   const closeChangelog = useCallback(() => setIsChangelogOpen(false), []);
+  const openPairDevice = useCallback(() => setIsPairDeviceOpen(true), []);
+  const closePairDevice = useCallback(() => setIsPairDeviceOpen(false), []);
   const closeMobileSearch = useCallback(() => setIsMobileSearchOpen(false), []);
 
   // Determine if we should show desktop layout (>= 1024px or Electron)
@@ -614,7 +627,7 @@ const Layout = ({ children }) => {
           <SidebarHeader leagueName={leagueName} onChangeLeague={handleChangeLeague} />
           <SidebarNav currentPath={location.pathname} />
           <SidebarUser user={user} onRefresh={fetchUserData} />
-          <SidebarFooter isAuthenticated={isAuthenticated} onLogout={handleLogout} onOpenChangelog={openChangelog} displayServerLink={displayServerLink} />
+          <SidebarFooter isAuthenticated={isAuthenticated} isElectron={isElectron} onLogout={handleLogout} onOpenChangelog={openChangelog} onOpenPairDevice={openPairDevice} displayServerLink={displayServerLink} />
         </div>
       </aside>
 
@@ -697,6 +710,7 @@ const Layout = ({ children }) => {
       )}
 
       <ChangelogModal isOpen={isChangelogOpen} onClose={closeChangelog} />
+      <PairDeviceModal isOpen={isPairDeviceOpen} onClose={closePairDevice} serverLinks={serverLinks} />
     </div>
   );
 };

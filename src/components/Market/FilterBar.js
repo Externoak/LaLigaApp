@@ -7,6 +7,7 @@ const POSITIONS = {
   2: 'Defensa',
   3: 'Centrocampista',
   4: 'Delantero',
+  5: 'Entrenador',
 };
 
 const PRICE_RANGES = {
