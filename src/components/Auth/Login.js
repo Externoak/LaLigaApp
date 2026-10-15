@@ -235,6 +235,12 @@ const Login = () => {
 
     } catch (error) {
       setError(error.message || 'Error de conexión');
+      // LaLiga retiró el login ROPC: llevar al login interactivo (escritorio)
+      // o a la guía manual de token (web).
+      if (error.code === 'ROPC_UNAVAILABLE') {
+        setLoginMethod('token');
+        if (!canUseElectronOAuth) setShowManualGuide(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -568,7 +574,7 @@ const Login = () => {
               }`}
             >
               <Chrome className="w-4 h-4 inline mr-2" />
-              Google
+              LaLiga / Google
             </button>
           </motion.div>
 
@@ -679,13 +685,13 @@ const Login = () => {
                 ) : (
                   <>
                     <Chrome className="w-5 h-5" />
-                    <span>Iniciar sesión con Google</span>
+                    <span>Iniciar sesión con LaLiga</span>
                   </>
                 )}
               </motion.button>
 
               <p className="text-center text-sm text-gray-500">
-                Se abrirá la ventana de inicio de sesión de La Liga (incluido Google). Al terminar, volverás automáticamente.
+                Se abrirá la ventana de inicio de sesión de La Liga (email/contraseña o Google). Al terminar, volverás automáticamente.
               </p>
 
               {/* Manual fallback toggle */}

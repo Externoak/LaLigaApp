@@ -173,7 +173,7 @@ jobs:
           $versionJson.version = $version
           $versionJson.publishedAt = $timestamp
           $jsonContent = $versionJson | ConvertTo-Json -Depth 10
-          [System.IO.File]::WriteAllText("version.json", $jsonContent, [System.Text.Encoding]::UTF8)
+          [System.IO.File]::WriteAllText("version.json", $jsonContent, (New-Object System.Text.UTF8Encoding $false))
           echo "Updated version.json with version: $version and publishedAt: $timestamp"
           Get-Content version.json -Encoding UTF8
         } else {
@@ -190,7 +190,7 @@ jobs:
         if (Test-Path "README.md") {
           $readmeContent = Get-Content "README.md" -Raw -Encoding UTF8
           $readmeContent = $readmeContent -replace 'version-[\d\.]+-', "version-$version-"
-          [System.IO.File]::WriteAllText("README.md", $readmeContent, [System.Text.Encoding]::UTF8)
+          [System.IO.File]::WriteAllText("README.md", $readmeContent, (New-Object System.Text.UTF8Encoding $false))
           echo "Updated README.md with version: $version"
         }
 
@@ -198,7 +198,7 @@ jobs:
         if (Test-Path "README_EN.md") {
           $readmeEnContent = Get-Content "README_EN.md" -Raw -Encoding UTF8
           $readmeEnContent = $readmeEnContent -replace 'version-[\d\.]+-', "version-$version-"
-          [System.IO.File]::WriteAllText("README_EN.md", $readmeEnContent, [System.Text.Encoding]::UTF8)
+          [System.IO.File]::WriteAllText("README_EN.md", $readmeEnContent, (New-Object System.Text.UTF8Encoding $false))
           echo "Updated README_EN.md with version: $version"
         }
 
@@ -262,7 +262,7 @@ jobs:
           $versionJson | Add-Member -NotePropertyName sha256 -NotePropertyValue $hash
         }
         $jsonContent = $versionJson | ConvertTo-Json -Depth 10
-        [System.IO.File]::WriteAllText("version.json", $jsonContent, [System.Text.Encoding]::UTF8)
+        [System.IO.File]::WriteAllText("version.json", $jsonContent, (New-Object System.Text.UTF8Encoding $false))
         echo "Artifact SHA256: $hash"
 
     - name: Create Release
