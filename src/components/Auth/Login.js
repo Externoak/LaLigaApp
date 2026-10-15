@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from '../../utils/motionShim';
-import { LogIn, Mail, Lock, ExternalLink, Chrome } from 'lucide-react';
+import { LogIn, Mail, Lock, ExternalLink, Chrome, Smartphone } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import authService from '../../services/authService';
 import updateService from '../../services/updateService';
@@ -235,11 +235,10 @@ const Login = () => {
 
     } catch (error) {
       setError(error.message || 'Error de conexión');
-      // LaLiga retiró el login ROPC: llevar al login interactivo (escritorio)
-      // o a la guía manual de token (web).
+      // LaLiga retiró el login ROPC: llevar a la pestaña LaLiga/Google
+      // (ventana en escritorio, QR desde el PC en el móvil).
       if (error.code === 'ROPC_UNAVAILABLE') {
         setLoginMethod('token');
-        if (!canUseElectronOAuth) setShowManualGuide(true);
       }
     } finally {
       setLoading(false);
@@ -301,182 +300,43 @@ const Login = () => {
   const isElectronApp = typeof window !== 'undefined' && window.electronAPI !== undefined;
   const canUseElectronOAuth = isElectronApp && typeof window.electronAPI.startOAuthLogin === 'function';
 
-  const getWebRedirectUri = () =>
-    process.env.REACT_APP_OAUTH_WEB_REDIRECT_URI ||
-    `${window.location.origin}/oauth-callback.html`;
-
-  // Drive the web popup OAuth flow: open the authorize URL and wait for the
-  // callback page to hand back the authorization code, then exchange it.
-  //
-  // Under Cross-Origin-Opener-Policy, once the popup navigates cross-origin to
-  // login.laliga.es the opener relationship is severed: `window.opener` in the
-  // callback becomes null and `popup.closed` is unreadable. So we DON'T rely on
-  // postMessage-from-opener or closed-polling — we listen on a same-origin
-  // BroadcastChannel (with a localStorage `storage` event as a fallback), both
-  // of which are unaffected by COOP.
-  const runWebOAuth = ({ authorizeUrl, redirectUri, state, verifier }) => {
-    return new Promise((resolve, reject) => {
-      oauthLog('opening popup for', authorizeUrl);
-      const popup = window.open(authorizeUrl, 'oauthLogin', 'width=520,height=720');
-      if (!popup) {
-        oauthLog('popup was blocked by the browser');
-        reject(new Error('El navegador bloqueó la ventana emergente. Permite las ventanas emergentes o usa el método manual.'));
-        return;
-      }
-
-      let done = false;
-      let channel = null;
-      try { channel = new BroadcastChannel('laliga-oauth'); } catch (e) { channel = null; }
-      oauthLog('popup opened; listening on', channel ? 'BroadcastChannel + storage + message' : 'storage + message (no BroadcastChannel)');
-
-      const cleanup = () => {
-        window.removeEventListener('message', onMessage);
-        window.removeEventListener('storage', onStorage);
-        if (channel) { try { channel.close(); } catch (e) { /* noop */ } }
-        clearTimeout(timeoutId);
-        try { localStorage.removeItem('oauth-callback-code'); } catch (e) { /* noop */ }
-      };
-
-      const complete = async (data) => {
-        if (done || !data) return;
-        done = true;
-        cleanup();
-        oauthLog('completing flow; code present:', !!data.code, 'state matches:', !state || data.state === state);
-        try {
-          if (state && data.state !== state) {
-            throw new Error('State mismatch en la respuesta OAuth');
-          }
-          if (data.error) {
-            throw new Error(data.error);
-          }
-          if (!data.code) {
-            throw new Error('No se recibió el código de autorización');
-          }
-          oauthLog('exchanging authorization code for tokens...');
-          const tokens = await authService.exchangeCodeForTokens({
-            code: data.code,
-            codeVerifier: verifier,
-            redirectUri
-          });
-          oauthLog('token exchange OK; keys:', Object.keys(tokens || {}));
-          await login(tokens);
-          oauthLog('login() completed');
-          try { popup.close(); } catch (e) { /* noop */ }
-          resolve();
-        } catch (err) {
-          oauthLog('flow failed:', err.message);
-          reject(err);
-        }
-      };
-
-      // Same-origin window message (works when COOP is not severing the opener).
-      const onMessage = (event) => {
-        if (event.origin !== window.location.origin) return;
-        if (event.data?.type === 'oauth-callback') {
-          oauthLog('received via window.postMessage');
-          complete(event.data);
-        }
-      };
-      // BroadcastChannel message (COOP-proof primary path). Also carries the
-      // popup's own debug output so it surfaces in THIS window's console.
-      const onChannel = (event) => {
-        if (event.data?.type === 'oauth-debug') {
-          oauthLog('popup »', event.data.msg, event.data.extra || '');
-          return;
-        }
-        if (event.data?.type === 'oauth-callback') {
-          oauthLog('received via BroadcastChannel');
-          complete(event.data);
-        }
-      };
-      // localStorage fallback: fires in this window when the popup writes the key.
-      const onStorage = (event) => {
-        if (event.key !== 'oauth-callback-code' || !event.newValue) return;
-        oauthLog('received via localStorage storage event');
-        try { complete(JSON.parse(event.newValue)); } catch (e) { /* noop */ }
-      };
-
-      window.addEventListener('message', onMessage);
-      window.addEventListener('storage', onStorage);
-      if (channel) channel.addEventListener('message', onChannel);
-
-      // Safety timeout to avoid dangling listeners on an abandoned popup.
-      const timeoutId = setTimeout(() => {
-        if (done) return;
-        done = true;
-        cleanup();
-        oauthLog('timed out after 3 min with no code received — popup likely stalled on a B2C error (check the popup window)');
-        try { popup.close(); } catch (e) { /* noop */ }
-        reject(new Error('Tiempo de espera agotado. Si iniciaste sesión y no volviste automáticamente, usa el método manual.'));
-      }, 3 * 60 * 1000);
-    });
-  };
-
   // One-click automated login (replaces the manual DevTools token capture).
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      oauthLog('start', { isElectronApp, canUseElectronOAuth });
-
-      // An Electron shell without the OAuth IPC (older build) can't run the
-      // in-app flow; the browser popup path won't work there either, so guide
-      // the user to update or use the manual method.
-      if (isElectronApp && !canUseElectronOAuth) {
-        throw new Error('Actualiza la aplicación para usar el inicio de sesión automático, o usa el método manual.');
-      }
-
+      // Solo la app de escritorio muestra este botón: B2C devuelve el código a
+      // authredirect://, que únicamente la ventana de Electron puede capturar.
       const verifier = pkce.generateVerifier();
       const challenge = await pkce.challengeFromVerifier(verifier);
       const state = pkce.randomState();
-      const redirectUri = canUseElectronOAuth
-        ? authService.AUTH_CONFIG.REDIRECT_URI
-        : getWebRedirectUri();
+      const redirectUri = authService.AUTH_CONFIG.REDIRECT_URI;
       const authorizeUrl = authService.buildAuthorizeUrl({
         redirectUri,
         codeChallenge: challenge,
         state
       });
-      oauthLog('redirectUri:', redirectUri);
       oauthLog('authorizeUrl (open this manually to see any B2C error):', authorizeUrl);
 
-      if (canUseElectronOAuth) {
-        oauthLog('using Electron in-app login window');
-        const result = await window.electronAPI.startOAuthLogin({ authorizeUrl, redirectUri, state });
-        // Don't log the raw authorization code — report only its presence/outcome.
-        oauthLog('electron result:', { success: result?.success, cancelled: result?.cancelled, hasCode: !!result?.code, error: result?.error });
-        if (result?.cancelled) {
-          oauthLog('user cancelled the login window');
-          setLoading(false);
-          return;
-        }
-        if (!result?.success || !result.code) {
-          throw new Error(result?.error || 'No se pudo completar el inicio de sesión');
-        }
-        oauthLog('exchanging authorization code for tokens...');
-        const tokens = await authService.exchangeCodeForTokens({
-          code: result.code,
-          codeVerifier: verifier,
-          redirectUri
-        });
-        oauthLog('token exchange OK; keys:', Object.keys(tokens || {}));
-        await login(tokens);
-        oauthLog('login() completed — component will unmount');
-        // On success the auth state flips and this component unmounts.
-      } else if (process.env.REACT_APP_OAUTH_WEB_REDIRECT_URI) {
-        // Only attempt the browser popup when an operator has explicitly
-        // configured a redirect URI that IS registered in LaLiga's B2C tenant.
-        oauthLog('using web popup login (custom redirect configured)');
-        await runWebOAuth({ authorizeUrl, redirectUri, state, verifier });
-      } else {
-        // Plain web: LaLiga's B2C only redirects to its own registered reply
-        // URLs (e.g. miliga.laliga.com), never to our origin, so the popup can
-        // never recover the code. Send the user to the manual method instead.
-        oauthLog('web without a registered redirect — automated login is not possible here; showing manual method');
-        setShowManualGuide(true);
-        throw new Error('El inicio de sesión automático con Google solo funciona en la app de escritorio. En el navegador, usa el método manual (Pegar Token) de abajo.');
+      const result = await window.electronAPI.startOAuthLogin({ authorizeUrl, redirectUri, state });
+      // Don't log the raw authorization code — report only its presence/outcome.
+      oauthLog('electron result:', { success: result?.success, cancelled: result?.cancelled, hasCode: !!result?.code, error: result?.error });
+      if (result?.cancelled) {
+        setLoading(false);
+        return;
       }
+      if (!result?.success || !result.code) {
+        throw new Error(result?.error || 'No se pudo completar el inicio de sesión');
+      }
+      const tokens = await authService.exchangeCodeForTokens({
+        code: result.code,
+        codeVerifier: verifier,
+        redirectUri
+      });
+      oauthLog('token exchange OK; keys:', Object.keys(tokens || {}));
+      await login(tokens);
+      // On success the auth state flips and this component unmounts.
     } catch (err) {
       oauthLog('handleGoogleLogin error:', err.message);
       setError(err.message || 'Error al iniciar sesión con Google');
@@ -693,6 +553,30 @@ const Login = () => {
               <p className="text-center text-sm text-gray-500">
                 Se abrirá la ventana de inicio de sesión de La Liga (email/contraseña o Google). Al terminar, volverás automáticamente.
               </p>
+              </>
+              )}
+
+              {/* Web/móvil: el navegador no puede capturar el login de LaLiga. El
+                  móvil se conecta al servidor del PC, así que entra con el QR de
+                  «Conectar móvil» de la app de escritorio. */}
+              {!canUseElectronOAuth && (
+                <div className="bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200/60 rounded-3xl p-6 shadow-sm">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-11 h-11 bg-gradient-to-r from-emerald-500 to-green-600 rounded-2xl flex items-center justify-center shadow">
+                      <Smartphone className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-emerald-900 text-lg">Entrar desde el móvil</h3>
+                      <p className="text-emerald-700 text-sm">Con la sesión de la app del PC, sin escribir nada</p>
+                    </div>
+                  </div>
+                  <ol className="space-y-2 text-sm text-emerald-900 list-decimal list-inside">
+                    <li>En el PC, abre la app de escritorio e inicia sesión con <strong>«Iniciar sesión con LaLiga»</strong>.</li>
+                    <li>Pulsa <strong>«Conectar móvil»</strong> en la barra lateral.</li>
+                    <li>Escanea el QR con la cámara del móvil y toca el enlace. ¡Listo!</li>
+                  </ol>
+                </div>
+              )}
 
               {/* Manual fallback toggle */}
               <button
@@ -700,12 +584,14 @@ const Login = () => {
                 onClick={() => setShowManualGuide((v) => !v)}
                 className="w-full text-center text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors"
               >
-                {showManualGuide ? 'Ocultar método manual' : '¿Problemas? Usar método manual'}
+                {showManualGuide
+                  ? 'Ocultar método manual'
+                  : canUseElectronOAuth
+                    ? '¿Problemas? Usar método manual'
+                    : '¿Estás en el navegador de un PC? Método manual: copiar el token con las herramientas de desarrollador'}
               </button>
-              </>
-              )}
 
-              {(showManualGuide || !canUseElectronOAuth) && (
+              {showManualGuide && (
               <>
               {/* Step-by-step guide */}
               <motion.div

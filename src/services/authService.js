@@ -24,11 +24,10 @@ const AUTH_CONFIG = {
   // policy that issues refresh tokens and that the manual token guide targets.
   SIGNIN_POLICY: "B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN",
   REDIRECT_URI: "authredirect://com.lfp.laligafantasy",
-  WEB_REDIRECT_URI: window.location.origin,
   SCOPE_TEMPLATE: (clientId) => `openid ${clientId} offline_access`
 };
 
-const ROPC_UNAVAILABLE_MESSAGE = 'LaLiga ha desactivado el inicio de sesión directo con email y contraseña. Usa «Iniciar sesión con LaLiga» (admite email/contraseña y Google).';
+const ROPC_UNAVAILABLE_MESSAGE = 'LaLiga ha desactivado el inicio de sesión directo con email y contraseña. Usa la pestaña «LaLiga / Google».';
 
 /**
  * Parse a B2C token endpoint response. B2C answers removed policies with an

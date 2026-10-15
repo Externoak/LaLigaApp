@@ -111,7 +111,7 @@ The project does not encourage or allow circumventing technical measures, prohib
 4. **Open your browser**
    Navigate to `http://localhost:3005` to access the application
 
-   **📱 Mobile device access**: The application displays the local network URL on startup (e.g., `http://192.168.x.x:3005`). Use this URL to access from your mobile phone or other devices on the same network. The interface is optimized for mobile devices.
+   **📱 Mobile access**: while the app is open on your PC, any device on the same Wi-Fi network can use it at the local network URL shown in the sidebar as "Acceso Web" (e.g., `http://192.168.x.x:3005`). To sign in without typing anything, log in on the PC, click **"Conectar móvil"** in the sidebar and scan the QR code with your phone's camera: you'll be signed in with your session and league. The code expires after 2 minutes and works only once. The interface is optimized for mobile devices.
 
 ## 🖥️ Platforms
 
@@ -225,9 +225,10 @@ The application uses a unified server that serves both the React application and
 ### Authentication
 
 The app uses OAuth2 with La Liga's Azure B2C tenant:
-- **One-click Google login** (desktop app): opens LaLiga's official login window, you sign in, and the app captures your session automatically — no manual token copying
-- Google OAuth for social login
-- Email/password authentication
+- **One-click LaLiga login** (desktop app): opens LaLiga's official login window (email/password or Google) and the app captures your session automatically — no manual token copying
+- Direct email/password login
+- **Connect phone** ("Conectar móvil"): share the PC session with your phone by scanning a QR code
+- Manual method (paste the token) for PC browsers
 - JWT token management with automatic refresh
 - Persistent session storage
 

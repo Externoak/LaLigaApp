@@ -13,6 +13,7 @@ const axiosPackagePath = require.resolve('axios/package.json');
 const axios = require(path.join(path.dirname(axiosPackagePath), 'dist/node/axios.cjs'));
 const { loadConfig } = require('./config');
 const { isOriginAllowed } = require('./security');
+const { buildPairingHandlers } = require('./pairing');
 
 // Ensure axios uses the Node http adapter even when XMLHttpRequest is present.
 axios.defaults.adapter = 'http';
@@ -452,6 +453,15 @@ const buildApp = (config) => {
   const lineupHandler = buildLineupHandler(config);
   const marketHandler = buildMarketHandler(config);
   const githubProxyHandler = buildGitHubProxyHandler(config);
+  const pairing = buildPairingHandlers(undefined, {
+    getLanUrls: (req) => {
+      const host = String(config.app.host || '').toLowerCase();
+      const port = req.socket?.localPort;
+      if (!port || host === '127.0.0.1' || host === 'localhost' || host === '::1') return [];
+      const hosts = WILDCARD_HOSTS.has(host) ? collectLanIPv4Addresses() : [config.app.host];
+      return hosts.map((ip) => `http://${ip}:${port}`);
+    },
+  });
 
   if (config.app.trustProxy) {
     app.set('trust proxy', config.app.trustProxy);
@@ -531,6 +541,9 @@ const buildApp = (config) => {
   app.get(config.proxy.lineupPath, lineupHandler);
   app.get(config.proxy.marketPath, marketHandler);
   app.get('/api/proxy-github', githubProxyHandler);
+  // Emparejar el móvil con la sesión del PC (QR). Antes del proxy: /api/* iría a LaLiga.
+  app.post('/api/pair', pairing.createHandler);
+  app.post('/api/pair/claim', pairing.claimHandler);
   app.use(fantasyProxy);
 
   const resolvedStaticDir = config.app.staticDir;

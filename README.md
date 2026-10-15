@@ -111,7 +111,7 @@ El proyecto no fomenta ni permite eludir medidas técnicas, scraping prohibido n
 4. **Abrir navegador**
    Navega a `http://localhost:3005` para acceder a la aplicación
 
-   **📱 Acceso desde dispositivos móviles**: La aplicación muestra la URL de red local al iniciar (ej: `http://192.168.x.x:3005`). Usa esta URL para acceder desde tu móvil u otros dispositivos en la misma red. La interfaz está optimizada para dispositivos móviles.
+   **📱 Acceso desde el móvil**: con la app abierta en el PC, cualquier dispositivo de la misma red Wi-Fi puede usarla en la URL de red local, que aparece en la barra lateral como «Acceso Web» (ej: `http://192.168.x.x:3005`). Para entrar sin escribir nada, inicia sesión en el PC, pulsa **«Conectar móvil»** en la barra lateral y escanea el QR con la cámara del móvil: entrarás con tu sesión y tu liga. El código caduca en 2 minutos y solo sirve una vez. La interfaz está optimizada para móviles.
 
 ## 🖥️ Plataformas
 
@@ -225,9 +225,10 @@ La aplicación usa un servidor unificado que sirve tanto la aplicación React co
 ### Autenticación
 
 La app usa OAuth2 con el tenant Azure B2C de LaLiga:
-- **Login con Google en un clic** (app de escritorio): abre la ventana oficial de LaLiga, inicias sesión y la app captura tu sesión automáticamente — sin copiar el token a mano
-- OAuth de Google para login social
-- Autenticación email/contraseña
+- **Inicio de sesión con LaLiga en un clic** (app de escritorio): abre la ventana oficial de LaLiga (email/contraseña o Google) y la app captura tu sesión automáticamente — sin copiar el token a mano
+- Inicio de sesión directo con email/contraseña
+- **Conectar móvil**: comparte la sesión del PC con el móvil escaneando un QR
+- Método manual (pegar el token) para el navegador de un PC
 - Gestión de tokens JWT con refresco automático
 - Almacenamiento persistente de sesión
 

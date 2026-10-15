@@ -7,7 +7,7 @@ import LoadingSpinner from './components/Common/LoadingSpinner';
 import RouteErrorBoundary from './components/Common/RouteErrorBoundary';
 import Login from './components/Auth/Login';
 import LeagueSelector from './components/Auth/LeagueSelector';
-import OAuthCallback from './components/Auth/OAuthCallback';
+import PairClaim from './components/Auth/PairClaim';
 // Route-based code splitting for major features
 const Dashboard = React.lazy(() => import(/* webpackChunkName: "dashboard" */ './components/Dashboard/Dashboard'));
 const Standings = React.lazy(() => import(/* webpackChunkName: "standings" */ './components/Standings/Standings'));
@@ -38,10 +38,8 @@ function App() {
     <ThemeProvider>
       <Router>
         <Routes>
-          {/* OAuth callback routes - always accessible */}
-          <Route path="/oauth/callback" element={<OAuthCallback />} />
-          <Route path="/callback" element={<OAuthCallback />} />
-          <Route path="/auth/callback" element={<OAuthCallback />} />
+          {/* QR de "Conectar móvil": accesible sin sesión */}
+          <Route path="/pair/:code" element={<PairClaim />} />
 
           {/* Main application */}
           <Route path="/*" element={<AppRoutes />} />

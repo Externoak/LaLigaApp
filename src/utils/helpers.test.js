@@ -11,15 +11,16 @@ import {
 } from './helpers';
 
 describe('getPositionName', () => {
-    test('mapea los ids de posición de fantasy (1-4)', () => {
+    test('mapea los ids de posición de fantasy (1-5)', () => {
         expect(getPositionName(1)).toBe('Portero');
         expect(getPositionName(2)).toBe('Defensa');
         expect(getPositionName(3)).toBe('Centrocampista');
         expect(getPositionName(4)).toBe('Delantero');
+        expect(getPositionName(5)).toBe('Entrenador');
     });
 
-    test("devuelve 'N/A' para ids desconocidos (5 = entrenador, solo en partidos reales)", () => {
-        expect(getPositionName(5)).toBe('N/A');
+    test("devuelve 'N/A' para ids desconocidos", () => {
+        expect(getPositionName(99)).toBe('N/A');
         expect(getPositionName(undefined)).toBe('N/A');
     });
 
