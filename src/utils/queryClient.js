@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
 // Singleton compartido: lo usa el árbol de React (QueryClientProvider en
-// index.js) y también los servicios sin acceso a hooks (alertas, ownership),
+// index.js) y también los servicios sin acceso a hooks (ownership),
 // para que todos los caminos compartan la misma caché ['teamData'], etc.
 export const queryClient = new QueryClient({
   defaultOptions: {

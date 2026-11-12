@@ -16,6 +16,12 @@ const oauthLog = (...args) => {
   console.log('%c[GoogleLogin]', 'color:#10b981;font-weight:bold', ...args);
 };
 
+// PKCE pendiente del método manual (verifier + state) entre «Abrir La Liga» y
+// el pegado del código.
+const MANUAL_OAUTH_KEY = 'laliga_manual_oauth';
+
+const WEB_CLIENT_TOKEN_MESSAGE = 'Este token es de miliga.laliga.com y LaLiga ya no lo acepta en Fantasy. Sigue la guía de nuevo: pulsa «Abrir La Liga» y pega el mensaje con el código.';
+
 // Enhanced Modal Component for Token Input with Validation
 const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
   if (!isOpen) return null;
@@ -23,11 +29,20 @@ const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
   // Validate JSON format and required keys
   const validateToken = () => {
     if (!value.trim()) {
-      return { isValid: false, error: 'El token no puede estar vacío' };
+      return { isValid: false, error: 'El código no puede estar vacío' };
+    }
+
+    // Método actual: la URL authredirect://…?code=… (o la línea de la consola)
+    if (authService.extractAuthCode(value)) {
+      return { isValid: true, error: null, message: 'Código de inicio de sesión de LaLiga detectado' };
     }
 
     try {
       const parsed = JSON.parse(value.trim());
+
+      if (authService.isWebClientToken(parsed)) {
+        return { isValid: false, error: WEB_CLIENT_TOKEN_MESSAGE };
+      }
 
       // Check if it has either access_token or id_token
       if (!parsed.access_token && !parsed.id_token) {
@@ -53,11 +68,11 @@ const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
         };
       }
 
-      return { isValid: true, error: null };
+      return { isValid: true, error: null, message: 'JSON válido y contiene los tokens requeridos' };
     } catch (error) {
       return {
         isValid: false,
-        error: 'Formato JSON inválido. Asegúrate de copiar el JSON completo desde { hasta }'
+        error: 'No se encuentra el código. Copia el mensaje completo que empieza por «Failed to launch \'authredirect://…»'
       };
     }
   };
@@ -85,8 +100,8 @@ const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
                 <Chrome className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">Pegar Token JSON</h3>
-                <p className="text-gray-500 text-sm">Introduce el token completo obtenido desde las herramientas de desarrollador</p>
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">Pegar código de LaLiga</h3>
+                <p className="text-gray-500 text-sm">Pega el mensaje de la Consola que contiene <code>authredirect://…code=…</code></p>
               </div>
             </div>
 
@@ -100,7 +115,7 @@ const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
                       ? 'border-gray-200 focus:ring-primary-400 focus:border-primary-400' 
                       : 'border-red-300 focus:ring-red-400 focus:border-red-400'
                   }`}
-                  placeholder='Pega aquí el JSON completo, por ejemplo:\n{\n  "access_token": "...",\n  "token_type": "Bearer",\n  "expires_in": 3600,\n  ...\n}'
+                  placeholder={"Pega aquí el mensaje completo, por ejemplo:\nFailed to launch 'authredirect://com.lfp.laligafantasy/?state=...&code=eyJraWQi...' because the scheme does not have a registered handler."}
                 />
                 <div className={`absolute inset-0 rounded-2xl bg-gradient-to-r transition-all duration-300 pointer-events-none ${
                   validation.isValid 
@@ -141,7 +156,7 @@ const TokenModal = ({ isOpen, onClose, onSubmit, value, onChange }) => {
                     <div className="w-5 h-5 bg-green-500 rounded-full mr-3 flex items-center justify-center">
                       <span className="text-white text-xs font-bold">✓</span>
                     </div>
-                    <p className="text-green-700 text-sm font-medium">JSON válido y contiene los tokens requeridos</p>
+                    <p className="text-green-700 text-sm font-medium">{validation.message}</p>
                   </div>
                 </motion.div>
               )}
@@ -257,14 +272,51 @@ const Login = () => {
     }
   };
 
-  const handleOpenLaLigaWeb = () => {
+  // Método manual: el mismo auth-code + PKCE que el login automático, pero el
+  // navegador no puede abrir authredirect://, así que el usuario copia de la
+  // consola la URL con el código. El token de miliga.laliga.com (cliente web)
+  // ya no lo acepta la API de Fantasy (401 desde 2026-11).
+  const handleOpenLaLigaWeb = async () => {
     setLoading(true);
     setError(null);
 
-    // Abrir La Liga en una nueva pestaña
-    window.open('https://miliga.laliga.com/', '_blank');
-    setError('Ve a la pestaña de La Liga, inicia sesión, luego copia el token aquí abajo');
-    setLoading(false);
+    try {
+      const verifier = pkce.generateVerifier();
+      const challenge = await pkce.challengeFromVerifier(verifier);
+      const state = pkce.randomState();
+      const redirectUri = authService.AUTH_CONFIG.REDIRECT_URI;
+      sessionStorage.setItem(MANUAL_OAUTH_KEY, JSON.stringify({ verifier, state, redirectUri }));
+
+      window.open(authService.buildAuthorizeUrl({ redirectUri, codeChallenge: challenge, state }), '_blank');
+      setError('Ve a la pestaña de La Liga, abre la Consola (F12), inicia sesión y copia aquí el mensaje con el código');
+    } catch (err) {
+      setError(err.message || 'No se pudo abrir el inicio de sesión de La Liga');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithPastedCode = async ({ code, state }) => {
+    let pending = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem(MANUAL_OAUTH_KEY));
+    } catch {
+      pending = null;
+    }
+    if (!pending?.verifier) {
+      throw new Error('Primero pulsa «Abrir La Liga» en esta misma ventana y luego pega el código que obtengas.');
+    }
+    if (state && pending.state && state !== pending.state) {
+      throw new Error('El código no corresponde al último «Abrir La Liga». Vuelve a pulsarlo y repite el inicio de sesión.');
+    }
+
+    const tokens = await authService.exchangeCodeForTokens({
+      code,
+      codeVerifier: pending.verifier,
+      redirectUri: pending.redirectUri
+    });
+    sessionStorage.removeItem(MANUAL_OAUTH_KEY);
+    await login(tokens);
   };
 
   // Modified function: Now just opens the modal
@@ -285,9 +337,15 @@ const Login = () => {
 
     try {
       let tokenData = tokenInputValue.trim();
+      const authCode = authService.extractAuthCode(tokenData);
 
-      if (tokenData.startsWith('{')) {
+      if (authCode) {
+        await loginWithPastedCode(authCode);
+      } else if (tokenData.startsWith('{')) {
         const parsed = JSON.parse(tokenData);
+        if (authService.isWebClientToken(parsed)) {
+          throw new Error(WEB_CLIENT_TOKEN_MESSAGE);
+        }
         if (parsed.access_token || parsed.id_token) {
           // Pass the complete OAuth response to preserve refresh_token
           await login(parsed);
@@ -298,10 +356,15 @@ const Login = () => {
         if (tokenData.startsWith('Bearer ')) {
           tokenData = tokenData.substring(7);
         }
+        if (authService.isWebClientToken(tokenData)) {
+          throw new Error(WEB_CLIENT_TOKEN_MESSAGE);
+        }
         await login(tokenData);
       }
     } catch (error) {
-      setError(`Token inválido: ${error.message || 'Formato incorrecto'}`);
+      setError(error instanceof SyntaxError
+        ? `Token inválido: ${error.message || 'Formato incorrecto'}`
+        : error.message || 'No se pudo iniciar sesión');
       notifyUpdateIfAvailable();
     } finally {
       setLoading(false);
@@ -626,7 +689,7 @@ const Login = () => {
                   </div>
                   <div>
                     <h3 className="font-bold text-blue-900 text-xl mb-1">Guía paso a paso</h3>
-                    <p className="text-blue-600 text-sm">Sigue estos pasos para obtener tu token de acceso, solo deberías tener que hacer esto
+                    <p className="text-blue-600 text-sm">Sigue estos pasos para iniciar sesión, solo deberías tener que hacer esto
                         <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">una única vez</span>.</p>
                   </div>
                 </div>
@@ -640,14 +703,14 @@ const Login = () => {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-blue-900 mb-2 flex items-center text-base">
                         <span className="mr-2">🌐</span>
-                        Ve a la página de Login de La Liga
+                        Abre el inicio de sesión de La Liga
                       </h4>
                       <div className="text-blue-700 text-sm space-y-1">
-                        <p>• Haz clic en el botón azul <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Abrir La Liga"</span> que está más abajo</p>
+                        <p>• Haz clic en el botón azul <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Abrir La Liga"</span> que está más abajo (usa Chrome o Edge)</p>
                         <p>• Se abrirá una nueva pestaña con la página de inicio de sesión de La Liga</p>
                         <p className="flex items-center">
                           <span className="w-2 h-2 bg-amber-400 rounded-full mr-2 animate-pulse"></span>
-                          <span className="font-medium text-amber-700">MUY IMPORTANTE:</span> NO hagas login todavía, solo ve a la página
+                          <span className="font-medium text-amber-700 mr-1">MUY IMPORTANTE:</span> NO inicies sesión todavía
                         </p>
                       </div>
                     </div>
@@ -661,15 +724,15 @@ const Login = () => {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-blue-900 mb-2 flex items-center text-base">
                         <span className="mr-2">🔧</span>
-                        Abre las Herramientas de Desarrollador
+                        Abre la Consola
                       </h4>
                       <div className="text-blue-700 text-sm space-y-1">
-                        <p>• Estando en la página de La Liga, pulsa la tecla <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono font-bold">F12</kbd></p>
+                        <p>• En esa pestaña de La Liga, pulsa la tecla <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono font-bold">F12</kbd></p>
                         <p>• Si F12 no funciona, prueba <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono">Ctrl</kbd> + <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono">Shift</kbd> + <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono">I</kbd></p>
-                        <p>• Se abrirá un panel en la parte inferior o lateral de la pantalla</p>
-                        <p>• Busca y haz clic en la pestaña que dice <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Network"</span> o <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Red"</span></p>
-                        <p>• Asegurate el la cajita <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"preserve log"</span> tenga ✔️</p>
-                        <p>• Dentro de esa pestaña, busca un botón que diga <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Fetch/XHR"</span> y haz clic en él</p>
+                        <p>• En el panel que se abre, haz clic en la pestaña <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Console"</span> o <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Consola"</span></p>
+                        <p>• Pulsa el engranaje ⚙️ de la Consola y marca <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Preserve log"</span> (<span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Conservar registro"</span>), para que el mensaje no se borre al cambiar de página</p>
+                        <p>• En la caja <span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Filter"</span> (<span className="font-medium bg-blue-100 px-2 py-0.5 rounded">"Filtrar"</span>) de la Consola escribe <code className="bg-gray-200 px-1.5 py-0.5 rounded text-sm">authredirect</code>: así solo verás el mensaje que necesitas</p>
+                        <p>• Deja este panel abierto durante todo el inicio de sesión</p>
                       </div>
                     </div>
                   </div>
@@ -685,10 +748,8 @@ const Login = () => {
                         Ahora sí, inicia sesión
                       </h4>
                       <div className="text-blue-700 text-sm space-y-1">
-                        <p>• Con las herramientas de desarrollador abiertas, introduce tu email y contraseña en La Liga</p>
-                        <p>• Haz clic en el botón de iniciar sesión</p>
-                        <p>• Verás que empiezan a aparecer muchas líneas en el panel de herramientas (esto es normal)</p>
-                        <p>• Espera a que termine de cargar completamente</p>
+                        <p>• Con la Consola abierta, inicia sesión en La Liga (email/contraseña o Google)</p>
+                        <p>• Al terminar, la pestaña de La Liga no te llevará a ninguna parte (se queda cargando o en blanco): es normal, no la cierres</p>
                       </div>
                     </div>
                   </div>
@@ -701,34 +762,17 @@ const Login = () => {
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-blue-900 mb-2 flex items-center text-base">
                         <span className="mr-2">📋</span>
-                        Encuentra y copia el token
+                        Copia el mensaje con el código
                       </h4>
-                      <div className="text-blue-700 text-sm space-y-2">
-                        <div>
-                          <p className="font-medium">🔍 Filtrar las respuestas:</p>
-                          <p>• En el panel Network, busca una caja de texto (suele tener un icono de lupa 🔍)</p>
-                          <p>• Copia y pega exactamente este texto en esa caja:</p>
-                        </div>
+                      <div className="text-blue-700 text-sm space-y-1">
+                        <p>• En la Consola aparecerá una línea roja (muy larga) como esta:</p>
                         <div className="bg-gray-900 rounded-lg p-2 my-2">
-                          <p className="text-green-400 font-mono text-sm break-all">token?p=B2C_1A_5ULAIP_PARAMETRIZED_SIGNIN</p>
+                          <p className="text-green-400 font-mono text-sm break-all">Failed to launch 'authredirect://com.lfp.laligafantasy/?state=…&amp;code=eyJraWQi…' because the scheme does not have a registered handler.</p>
                         </div>
-                        <div>
-                          <p className="font-medium">📍 Encontrar el resultado:</p>
-                          <p>• Debería aparecer una sola línea que empiece por <code className="bg-gray-200 px-1.5 py-0.5 rounded text-sm">login.laliga.es</code></p>
-                          <p>• Haz clic sobre esa línea (sobre la parte que dice la URL)</p>
-                        </div>
-                        <div>
-                          <p className="font-medium">👀 Ver la respuesta:</p>
-                          <p>• A la derecha se abrirá más información</p>
-                          <p>• Busca una pestaña que diga <span className="bg-blue-100 px-2 py-0.5 rounded font-medium">"Response"</span> o <span className="bg-blue-100 px-2 py-0.5 rounded font-medium">"Respuesta"</span></p>
-                          <p>• Si no la ves, puede estar oculta bajo el símbolo <strong>&gt;&gt;</strong></p>
-                        </div>
-                        <div>
-                          <p className="font-medium">📋 Copiar todo el contenido:</p>
-                          <p>• Verás un texto que empieza por <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">{"{"}</code> y termina por <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">{"}"}</code></p>
-                          <p>• Selecciona TODO ese texto (desde la primera llave hasta la última) y cópialo</p>
-                          <p>• Luego usa el botón verde <span className="bg-green-100 px-2 py-0.5 rounded font-medium">"Pegar Token"</span> de abajo</p>
-                        </div>
+                        <p>• Selecciona la línea entera: haz clic al principio de <code className="bg-gray-200 px-1.5 py-0.5 rounded text-sm">Failed</code>, mantén pulsado <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono">Shift</kbd> y haz clic al final de <code className="bg-gray-200 px-1.5 py-0.5 rounded text-sm">handler.</code>; luego <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono">Ctrl</kbd> + <kbd className="bg-gray-200 px-2 py-0.5 rounded text-sm font-mono">C</kbd></p>
+                        <p>• No hace falta recortar nada: la app saca el código de la línea completa</p>
+                        <p>• Vuelve a esta pestaña, pulsa el botón verde <span className="bg-green-100 px-2 py-0.5 rounded font-medium">"Pegar código"</span> de abajo y pégalo. Hazlo enseguida: el código caduca a los pocos minutos y solo sirve una vez</p>
+                        <p>• Si falla o tardaste demasiado, empieza de nuevo desde el paso 1 (cada «Abrir La Liga» genera un código nuevo)</p>
                       </div>
                     </div>
                   </div>
@@ -754,7 +798,7 @@ const Login = () => {
                 whileHover={{ scale: loading ? 1 : 1.02 }}
               >
                 <Chrome className="w-5 h-5" />
-                <span>Pegar Token</span>
+                <span>Pegar código</span>
               </motion.button>
               </>
               )}

@@ -22,7 +22,6 @@ const LineupEditor = React.lazy(() => import(/* webpackChunkName: "lineup-editor
 const TeamPlayers = React.lazy(() => import(/* webpackChunkName: "team-players" */ './components/Teams/TeamPlayers'));
 const LaLigaTeams = React.lazy(() => import(/* webpackChunkName: "laliga-teams" */ './components/Teams/LaLigaTeams'));
 const MarketTrends = React.lazy(() => import(/* webpackChunkName: "market-trends" */ './components/Market/MarketTrends'));
-const AlertManager = React.lazy(() => import(/* webpackChunkName: "alerts" */ './components/Alerts/AlertManager'));
 const Settings = React.lazy(() => import(/* webpackChunkName: "settings" */ './components/Settings/Settings'));
 const OncesProbles = React.lazy(() => import(/* webpackChunkName: "onces" */ './components/OncesProbles/OncesProbles'));
 
@@ -97,7 +96,6 @@ function AppRoutes() {
         <Route path="/players" element={<Players />} />
         <Route path="/clauses" element={<Clauses />} />
         <Route path="/activity" element={<Activity />} />
-        <Route path="/alerts" element={<AlertManager />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/onces-probables" element={<OncesProbles />} />
         <Route path="*" element={<Navigate to="/" />} />

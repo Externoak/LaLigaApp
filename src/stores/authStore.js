@@ -18,6 +18,16 @@ const unregisterLegacyServiceWorker = () => {
     .catch(() => { /* noop */ });
 };
 
+// Las alertas de jugador se eliminaron en 3.5.7 (solo funcionaban con la app
+// abierta): borrar las que quedaron guardadas.
+const removeLegacyAlerts = () => {
+  try {
+    localStorage.removeItem('alert-storage');
+  } catch {
+    /* noop */
+  }
+};
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -44,6 +54,7 @@ export const useAuthStore = create(
       initializeAuth: async () => {
 
         unregisterLegacyServiceWorker();
+        removeLegacyAlerts();
 
         // First, try to recover from persistent storage if localStorage is empty or expired
         await get().tryRecoverFromPersistentStorage();

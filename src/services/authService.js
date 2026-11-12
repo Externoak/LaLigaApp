@@ -237,6 +237,49 @@ export async function exchangeCodeForTokens({ code, codeVerifier, redirectUri })
 }
 
 /**
+ * Extract the authorization code from whatever the user pasted in the manual
+ * login: the `authredirect://…?code=…` URL, Chrome's console line
+ * ("Failed to launch 'authredirect://…' because the scheme…"), or just the
+ * `code=…` fragment.
+ *
+ * @param {string} text - Pasted text.
+ * @returns {{code: string, state: string|null}|null} null if no code found.
+ */
+export function extractAuthCode(text) {
+  if (typeof text !== 'string') return null;
+  const codeMatch = text.match(/[?&#]code=([^&'"\s]+)/);
+  if (!codeMatch) return null;
+  const stateMatch = text.match(/[?&#]state=([^&'"\s]+)/);
+  const decode = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+  return {
+    code: decode(codeMatch[1]),
+    state: stateMatch ? decode(stateMatch[1]) : null
+  };
+}
+
+/**
+ * Whether a token response was issued to LaLiga's web client (miliga.laliga.com).
+ * Since 2026-11 the Fantasy API answers 401 "Invalid credentials" to those
+ * tokens; only tokens of the app client (OAUTH_CLIENT_ID) are accepted.
+ *
+ * @param {Object|string} tokenOrData - Token response object or raw JWT.
+ * @returns {boolean}
+ */
+export function isWebClientToken(tokenOrData) {
+  const raw = typeof tokenOrData === 'string'
+    ? tokenOrData
+    : tokenOrData?.id_token || tokenOrData?.access_token;
+  const payload = raw ? parseJwtPayload(raw) : null;
+  return !!payload && (payload.aud === AUTH_CONFIG.CLIENT_ID || payload.azp === AUTH_CONFIG.CLIENT_ID);
+}
+
+/**
  * Decode JWT token payload
  * @param {string} token - JWT token
  * @returns {Object|null} Decoded payload or null if failed
@@ -419,6 +462,8 @@ const authService = {
   refreshToken,
   buildAuthorizeUrl,
   exchangeCodeForTokens,
+  extractAuthCode,
+  isWebClientToken,
   decodeJWT,
   extractUserFromTokens,
   isTokenExpired,

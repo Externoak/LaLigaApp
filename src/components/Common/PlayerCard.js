@@ -1,21 +1,12 @@
 import React from 'react';
 import ProgressiveImage from './ProgressiveImage';
-import { BellRing } from 'lucide-react';
-import { useAlertStore } from '../../stores/alertStore';
 
-const PlayerCard = ({ player, onClick, showAlertIndicator = true }) => {
-  const hasActiveAlerts = useAlertStore((state) => state.hasActiveAlerts);
-  const getPlayerAlerts = useAlertStore((state) => state.getPlayerAlerts);
-  
+const PlayerCard = ({ player, onClick }) => {
   const handleClick = () => {
     if (onClick) {
       onClick(player);
     }
   };
-
-  // Check if player has active alerts
-  const hasAlerts = showAlertIndicator && player?.id && hasActiveAlerts(player.id);
-  const playerAlerts = hasAlerts ? getPlayerAlerts(player.id) : [];
 
   // Get position background color based on positionId
   const getPositionBackgroundColor = (positionId) => {
@@ -35,25 +26,9 @@ const PlayerCard = ({ player, onClick, showAlertIndicator = true }) => {
 
   return (
     <div 
-      className={`card p-4 hover-scale cursor-pointer transition-all duration-200 hover:shadow-lg relative ${
-        hasAlerts ? 'ring-2 ring-yellow-400 dark:ring-yellow-500' : ''
-      } ${getPositionBackgroundColor(player?.positionId)}`}
+      className={`card p-4 hover-scale cursor-pointer transition-all duration-200 hover:shadow-lg relative ${getPositionBackgroundColor(player?.positionId)}`}
       onClick={handleClick}
     >
-      {/* Alert Indicator */}
-      {hasAlerts && (
-        <div className="absolute top-2 right-2 z-10">
-          <div className="relative">
-            <BellRing className="w-5 h-5 text-yellow-500 animate-pulse" />
-            {playerAlerts.length > 1 && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                {playerAlerts.length}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center space-x-3">
         <div className="w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-full flex items-center justify-center">
           {player?.images?.transparent?.['256x256'] ? (
