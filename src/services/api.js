@@ -422,9 +422,6 @@ export const fantasyAPI = {
   // Más endpoints según necesidades
   getPlayerDetails: (playerId, leagueId) => api.get(`${CMP}/player/${playerId}/league/${leagueId}?x-lang=es`),
 
-  // Nota: las cláusulas de toda la liga viven en
-  // utils/fetchAllTeamsData.fetchLeagueClauses (walk vía caché compartida).
-
   // Scraping de alineaciones probables desde futbolfantasy.com (siempre vía proxy)
   scrapeTeamLineup: (teamSlug) => {
     const targetUrl = `https://www.futbolfantasy.com/laliga/equipos/${teamSlug}`;

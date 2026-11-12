@@ -170,7 +170,8 @@ export const parseJwtPayload = (token) => {
     try {
         const parts = token.split('.');
         if (parts.length !== 3) return null;
-        return JSON.parse(atob(parts[1]));
+        // El payload va en base64url ('-' y '_'), que atob no acepta.
+        return JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
     } catch (error) {
         return null;
     }

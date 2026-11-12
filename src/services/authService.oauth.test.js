@@ -1,4 +1,4 @@
-import { buildAuthorizeUrl, exchangeCodeForTokens, getToken } from './authService';
+import { buildAuthorizeUrl, exchangeCodeForTokens, extractAuthCode, getToken, isWebClientToken } from './authService';
 
 const jsonResponse = (status, body) => ({
   ok: status >= 200 && status < 300,
@@ -120,5 +120,48 @@ describe('getToken', () => {
     const error = await getToken('a@b.c', 'pw').catch((e) => e);
     expect(error).not.toBeInstanceOf(SyntaxError);
     expect(error.code).toBe('ROPC_UNAVAILABLE');
+  });
+});
+
+describe('extractAuthCode', () => {
+  it('reads code and state from the Chrome console message', () => {
+    const line = "Failed to launch 'authredirect://com.lfp.laligafantasy?state=st%3D1&code=eyJra.abc-_x' because the scheme does not have a registered handler.";
+    expect(extractAuthCode(line)).toEqual({ code: 'eyJra.abc-_x', state: 'st=1' });
+  });
+
+  it('reads the real Chrome line (slash before the query)', () => {
+    const line = "Failed to launch 'authredirect://com.lfp.laligafantasy/?state=gQTx-Xl_hw&code=eyJraWQi.Iojn_0-F.hpm3' because the scheme does not have a registered handler.";
+    expect(extractAuthCode(line)).toEqual({ code: 'eyJraWQi.Iojn_0-F.hpm3', state: 'gQTx-Xl_hw' });
+  });
+
+  it('accepts the bare redirect URL with code before state', () => {
+    expect(extractAuthCode('authredirect://com.lfp.laligafantasy?code=c1&state=s1')).toEqual({ code: 'c1', state: 's1' });
+  });
+
+  it('returns null for token JSON or plain text', () => {
+    expect(extractAuthCode('{"id_token":"x"}')).toBeNull();
+    expect(extractAuthCode('hola')).toBeNull();
+  });
+});
+
+describe('isWebClientToken', () => {
+  // Payload base64url con '-' y '_' (atob a secas no lo decodifica).
+  const jwtFor = (claims) => {
+    const payload = Buffer.from(JSON.stringify({ ...claims, pad: '???>>>' }))
+      .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return `h.${payload}.s`;
+  };
+
+  it('flags tokens issued to the miliga.laliga.com web client', () => {
+    const token = jwtFor({ aud: '6457fa17-1224-416a-b21a-ee6ce76e9bc0' });
+    expect(token).toMatch(/[-_]/);
+    expect(isWebClientToken({ access_token: token, id_token: token })).toBe(true);
+    expect(isWebClientToken(token)).toBe(true);
+  });
+
+  it('accepts tokens of the app client and non-JWT input', () => {
+    expect(isWebClientToken({ id_token: jwtFor({ aud: 'af88bcff-1157-40a0-b579-030728aacf0b' }) })).toBe(false);
+    expect(isWebClientToken('not-a-jwt')).toBe(false);
+    expect(isWebClientToken({})).toBe(false);
   });
 });

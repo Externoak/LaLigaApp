@@ -35,7 +35,9 @@ const LeagueSelector = () => {
         setCorsError(true);
         toast.error('❌ Error CORS: Necesitas configurar un proxy o deshabilitar CORS');
       } else if (error.response?.status === 401) {
-        toast.error('❌ Token no válido o expirado. Ve a fantasy.laliga.com, obtén un token Bearer válido y úsalo en el login JSON.');
+        // También llega aquí una sesión antigua con token de miliga.laliga.com,
+        // que la API de Fantasy rechaza desde 2026-11.
+        toast.error('❌ LaLiga ha rechazado la sesión. Cierra sesión y vuelve a entrar con «Iniciar sesión con LaLiga» o con el método manual.', { duration: 8000 });
       } else if (error.response?.status === 500) {
         toast.error('❌ Error 500 del servidor de La Liga Fantasy. Este endpoint puede estar caído o requerir parámetros específicos.');
       } else {

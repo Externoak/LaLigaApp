@@ -7,7 +7,6 @@ import { X, Trophy, TrendingUp, Calendar, Star, User, MapPin, ChevronLeft, Chevr
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from './LoadingSpinner';
-import QuickAlertButton from './QuickAlertButton';
 import { useCurrentWeek } from '../../hooks/useCurrentWeek';
 import { formatCurrencyCompact } from '../../utils/helpers';
 
@@ -252,13 +251,6 @@ const PlayerDetailModal = ({ isOpen, onClose, player }) => {
           {/* Header */}
           <div className="relative bg-gradient-to-r from-primary-500 to-primary-600 px-4 md:px-6 py-6 md:py-8 text-white">
             <div className="absolute top-3 md:top-4 right-3 md:right-4 flex gap-2">
-              <QuickAlertButton
-                player={player}
-                alertType="clause_available"
-                className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-full transition-colors"
-                size="sm"
-                variant="subtle"
-              />
               <button
                 type="button"
                 onClick={onClose}

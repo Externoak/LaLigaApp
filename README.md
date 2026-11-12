@@ -1,6 +1,6 @@
 # LaLiga Fantasy App
 
-[![Version](https://img.shields.io/badge/version-3.5.6-green.svg)](https://github.com/Externoak/LaLigaApp)
+[![Version](https://img.shields.io/badge/version-3.5.7-green.svg)](https://github.com/Externoak/LaLigaApp)
 [![React](https://img.shields.io/badge/React-18.2.0-blue.svg)](https://reactjs.org/)
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 [![Platform](https://img.shields.io/badge/platform-Web%20%7C%20Electron%20-orange.svg)](#plataformas)
@@ -13,6 +13,8 @@
 > ⚠️ **Aviso legal**: Proyecto **no oficial**. No está afiliado con LaLiga Fantasy ni con futbolfantasy.com.  
 
 > Una plataforma integral de gestión de La Liga Fantasy con información extra de mercado y onces probables de https://www.futbolfantasy.com/
+
+⭐ **¿Te ha ayudado a cazar el chollo de la jornada?** Una [estrella en GitHub](https://github.com/Externoak/LaLigaApp) es el mejor fichaje que puedes hacerle al proyecto: gratis y sin cláusula de rescisión.
 
 ##  Cómo usar la aplicación
 
