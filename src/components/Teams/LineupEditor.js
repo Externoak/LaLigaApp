@@ -3,12 +3,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from '../../utils/motionShim';
 import {
   Target, Save, RotateCcw, Users, ChevronDown, Check,
-  AlertCircle, User, X, Search, Grid3x3, Loader
+  AlertCircle, User, X, Search, Grid3x3, Loader, Wand2
 } from 'lucide-react';
 import { fantasyAPI } from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { findOptimalLineup } from '../../utils/lineupOptimizer';
+import oncesProbabesService from '../../services/oncesProbles';
+import { normalizePlayerName } from '../../utils/playerNameMatcher';
 
 const LineupEditor = () => {
   const leagueId = useAuthStore((state) => state.leagueId);
@@ -29,6 +32,7 @@ const LineupEditor = () => {
   const [selectedPosition, setSelectedPosition] = useState(null); // { type: 'goalkeeper'|'defender'|'midfield'|'striker', index: number }
   const [searchTerm, setSearchTerm] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
 
   // Get user's team ID
   const { data: standings } = useQuery({
@@ -230,6 +234,74 @@ const LineupEditor = () => {
     });
   };
 
+  // Optimize lineup
+  const handleOptimize = async () => {
+    if (isOptimizing) return;
+    setIsOptimizing(true);
+    const toastId = toast.loading('Calculando mejor alineación...');
+
+    try {
+      // 1. Identify teams in squad
+      const uniqueTeams = new Map(); // id -> slug
+      const teamsList = teamPlayers.map(tp => tp.playerMaster?.team).filter(Boolean);
+      
+      for (const t of teamsList) {
+        if (uniqueTeams.has(t.id)) continue;
+        let foundSlug = null;
+        Object.entries(oncesProbabesService.LALIGA_TEAMS).forEach(([slug, info]) => {
+             if (String(info.logoId) === String(t.id)) foundSlug = slug;
+             else if (normalizePlayerName(info.name) === normalizePlayerName(t.name)) foundSlug = slug;
+        });
+        if (foundSlug) uniqueTeams.set(t.id, foundSlug);
+      }
+
+      // 2. Fetch probabilities
+      const probMap = new Map(); 
+      const slugsToFetch = [...new Set(uniqueTeams.values())];
+
+      await Promise.all(slugsToFetch.map(async (slug) => {
+          try {
+              const lineupData = await oncesProbabesService.fetchTeamLineup(slug);
+              if (!lineupData || !lineupData.players) return;
+
+              const allScraped = [...lineupData.players.starting, ...lineupData.players.bench];
+              const teamId = [...uniqueTeams.entries()].find(([, v]) => v === slug)?.[0];
+              const teamPlayersForTeam = teamPlayers.filter(tp => String(tp.playerMaster?.team?.id) === String(teamId));
+
+               teamPlayersForTeam.forEach(tp => {
+                    const master = tp.playerMaster;
+                    const myName = normalizePlayerName(master.nickname || master.name);
+                    const match = allScraped.find(sp => {
+                        const spName = normalizePlayerName(sp.name);
+                        return spName === myName || spName.includes(myName) || myName.includes(spName);
+                    });
+                    if (match && match.probability) {
+                        probMap.set(master.id, parseInt(match.probability));
+                    }
+               });
+          } catch (e) {
+              console.error(`Failed to fetch lineup for ${slug}`, e);
+          }
+      }));
+
+      // 3. Run optimizer
+      const { lineup: optimalLineup, formation: optimalFormation } = findOptimalLineup(teamPlayers, probMap);
+
+      if (optimalLineup && optimalFormation) {
+          setLineup(optimalLineup);
+          setSelectedFormation(optimalFormation);
+          toast.success('Alineación optimizada según puntos probables', { id: toastId });
+      } else {
+          toast.error('No se pudo generar una alineación válida', { id: toastId });
+      }
+    } catch (error) {
+       console.error('Optimization error:', error);
+       toast.error('Error al optimizar', { id: toastId });
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
   // Save lineup
   const handleSave = async () => {
     if (!selectedFormation || !userTeamId) {
@@ -357,6 +429,18 @@ const LineupEditor = () => {
 
           {/* Action buttons */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleOptimize}
+              disabled={isOptimizing || saving}
+              className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isOptimizing ? (
+                <Loader className="w-4 h-4 animate-spin" />
+              ) : (
+                <Wand2 className="w-4 h-4" />
+              )}
+              <span className="hidden sm:inline">IA</span>
+            </button>
             <button
               onClick={handleReset}
               disabled={!hasChanges || saving}
@@ -532,13 +616,46 @@ const LineupEditor = () => {
       {/* Field Visualization */}
       {formationReq && (
         <div className="card p-4 sm:p-6">
-          <div className="mb-3 sm:mb-4">
+          <div className="mb-3 sm:mb-4 flex items-center justify-between">
+            <div>
             <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
               Alineación Actual
             </h2>
             <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
               Click en las posiciones para seleccionar o cambiar jugadores
             </p>
+            </div>
+            
+            {/* Total Average Points Metric */}
+            <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                <div className="text-right">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Media Puntos</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white leading-none">
+                        {(() => {
+                            const allPlayers = [
+                                lineup.goalkeeper,
+                                ...lineup.defender,
+                                ...lineup.midfield,
+                                ...lineup.striker
+                            ].filter(Boolean);
+
+                             const totalAvg = allPlayers.reduce((sum, p) => {
+                                // Prefer wrapper averagePoints, fallback to master
+                                // Note: API usually returns avg points numeric.
+                                const avg = p.averagePoints || p.playerMaster?.averagePoints || 0;
+                                return sum + parseFloat(avg);
+                            }, 0);
+                            
+                            // Format with 1 decimal
+                            const average = allPlayers.length > 0 ? totalAvg / allPlayers.length : 0;
+                            return average.toFixed(1);
+                        })()}
+                    </p>
+                </div>
+                <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full text-green-600 dark:text-green-400">
+                    <Grid3x3 className="w-5 h-5" /> 
+                </div>
+            </div>
           </div>
 
           {/* Football Field */}
